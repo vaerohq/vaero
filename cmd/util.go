@@ -3,6 +3,7 @@ package cmd
 import (
 	"database/sql"
 	"fmt"
+	"os"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/vaerohq/vaero/execute"
@@ -25,6 +26,21 @@ var executor execute.Executor
 func (c *ControlDB) InitTables() {
 	var err error
 
+	// Check if ./data directory exists
+	if _, err := os.Stat("./data/"); err != nil {
+		if os.IsNotExist(err) {
+			// Create ./data directory
+			err = os.Mkdir("data", 0755) // r, x by all, w by owner
+
+			if err != nil {
+				log.Logger.Fatal(err.Error())
+			}
+		} else {
+			log.Logger.Fatal(err.Error())
+		}
+	}
+
+	// Open DB file. Creates file if it doesn't exist.
 	c.db, err = sql.Open("sqlite3", "./data/vaero.db")
 	if err != nil {
 		log.Logger.Fatal(err.Error())
@@ -39,28 +55,6 @@ func (c *ControlDB) InitTables() {
 	if err != nil {
 		log.Logger.Fatal(err.Error())
 	}
-
-	/*
-		sqlStmt := fmt.Sprintf(`
-		SELECT name FROM sqlite_master WHERE type='table' and name='%s';
-		`, jobsTable)
-
-		rows, err := db.Query(sqlStmt)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer rows.Close()
-
-		if rows.Next() {
-			fmt.Println("Table found")
-		} else {
-			fmt.Println("Table not found")
-
-			sqlStmt := fmt.Sprintf(`
-			CREATE TABLE %s (id integer not null primary key, name text);;
-			`, jobsTable)
-		}
-	*/
 }
 
 // AddHandler adds the job as staged
@@ -77,100 +71,6 @@ func (c *ControlDB) AddHandler(specName string) {
 	if err != nil {
 		log.Logger.Fatal(err.Error())
 	}
-
-	/*
-		sqlStmt := `
-		create table foo (id integer not null primary key, name text);
-		delete from foo;
-		`
-		_, err = db.Exec(sqlStmt)
-		if err != nil {
-			log.Printf("%q: %s\n", err, sqlStmt)
-			return
-		}
-
-		tx, err := db.Begin()
-		if err != nil {
-			log.Fatal(err)
-		}
-		stmt, err := tx.Prepare("insert into foo(id, name) values(?, ?)")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer stmt.Close()
-		for i := 0; i < 100; i++ {
-			_, err = stmt.Exec(i, fmt.Sprintf("こんにちは世界%03d", i))
-			if err != nil {
-				log.Fatal(err)
-			}
-		}
-		err = tx.Commit()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		rows, err := db.Query("select id, name from foo")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id int
-			var name string
-			err = rows.Scan(&id, &name)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println(id, name)
-		}
-		err = rows.Err()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		stmt, err = db.Prepare("select name from foo where id = ?")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer stmt.Close()
-		var name string
-		err = stmt.QueryRow("3").Scan(&name)
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(name)
-
-		_, err = db.Exec("delete from foo")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		_, err = db.Exec("insert into foo(id, name) values(1, 'foo'), (2, 'bar'), (3, 'baz')")
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		rows, err = db.Query("select id, name from foo")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer rows.Close()
-		for rows.Next() {
-			var id int
-			var name string
-			err = rows.Scan(&id, &name)
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Println(id, name)
-		}
-		err = rows.Err()
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		fmt.Println("Add")
-	*/
 }
 
 // DeleteHandler deletes the job with id. If not found, do nothing.

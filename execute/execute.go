@@ -55,9 +55,9 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule) {
 
 			// TEMP
 			if count%2 == 0 {
-				time.Sleep(time.Second * 1)
+				time.Sleep(time.Second * 0)
 			} else {
-				time.Sleep(time.Second * 2)
+				time.Sleep(time.Second * 3)
 			}
 			count++
 		}
@@ -100,13 +100,13 @@ func sinkNode(tnOut chan capsule.Capsule) {
 	timeChan := make(chan capsule.SinkTimerCapsule, settings.DefChanBufferLen)
 
 	defer func() {
-		closeSinks(snks, timeChan)
+		closeSinks(snks)
 		log.Logger.Info("Closing sinkNode")
 	}()
 
 	sinkTargets := []int{1001, 1002} // temp
 
-	initSinkNode(snks, sinkTargets)
+	initSinkNode(snks, sinkTargets, timeChan)
 
 	// main loop
 	for {
@@ -115,7 +115,7 @@ func sinkNode(tnOut chan capsule.Capsule) {
 		// Receive timer event
 		case tc, _ := <-timeChan:
 
-			handleSinkTimer(tc, snks, timeChan)
+			handleSinkTimer(tc, snks)
 
 		// Receive new events from transformNode
 		case event, ok := <-tnOut:
@@ -125,7 +125,7 @@ func sinkNode(tnOut chan capsule.Capsule) {
 				return
 			}
 
-			sinkBatch(&event, snks, timeChan)
+			sinkBatch(&event, snks)
 		}
 	}
 }

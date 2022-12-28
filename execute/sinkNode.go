@@ -18,7 +18,8 @@ type SinkConfig struct {
 	Prefix        map[string]*SinkBuffer
 	BatchMaxBytes int
 	BatchMaxTime  int
-	FlushChan     chan capsule.Capsule
+	FlushChan     chan capsule.Capsule          // channel for sending flushed data (received by FlushNode)
+	TimeChan      chan capsule.SinkTimerCapsule // channel for sending timer expiration (received by SinkNode)
 }
 
 type SinkBuffer struct {
@@ -28,13 +29,14 @@ type SinkBuffer struct {
 }
 
 // initSinkNode performs initialize for the sink node
-func initSinkNode(sinks map[int]*SinkConfig, sinkTargets []int) {
+func initSinkNode(sinks map[int]*SinkConfig, sinkTargets []int, timeChan chan capsule.SinkTimerCapsule) {
 
 	// Initialize all sinks
 	for _, sinkTarget := range sinkTargets {
 		// Create configuration for a sink
 		sinks[sinkTarget] = &SinkConfig{Id: sinkTarget, Type: "stdout", BatchMaxBytes: 2_500, BatchMaxTime: 2,
-			Prefix: make(map[string]*SinkBuffer), FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen)}
+			Prefix: make(map[string]*SinkBuffer), FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen),
+			TimeChan: timeChan}
 
 		// Create goroutine to flush to the sink
 		go flushNode(sinks[sinkTarget])
@@ -42,7 +44,7 @@ func initSinkNode(sinks map[int]*SinkConfig, sinkTargets []int) {
 }
 
 // sinkBatch adds events to a sink buffer and flushes if needed
-func sinkBatch(c *capsule.Capsule, sinks map[int]*SinkConfig, timeChan chan capsule.SinkTimerCapsule) {
+func sinkBatch(c *capsule.Capsule, sinks map[int]*SinkConfig) {
 
 	// These are temp variables that will be user specified
 	var timeField string = "time"     // the path to the timestamp
@@ -77,17 +79,17 @@ func sinkBatch(c *capsule.Capsule, sinks map[int]*SinkConfig, timeChan chan caps
 			sinkBuffer = &SinkBuffer{LastFlush: time.Now()}
 			sinkConfig.Prefix[prefix] = sinkBuffer
 
-			go startSinkTimer(sinkConfig.BatchMaxTime, timeChan,
+			go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
 				capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
 		}
 
 		// Append to selected buffer
-		sinkAddToBuffer(sinkBuffer, sinkConfig, prefix, event, timeChan)
+		sinkAddToBuffer(sinkBuffer, sinkConfig, prefix, event)
 	}
 }
 
 // sinkAddToBuffer adds an event to the buffer, and flushes if write out criteria is met
-func sinkAddToBuffer(sinkBuffer *SinkBuffer, sinkConfig *SinkConfig, prefix string, event string, timeChan chan capsule.SinkTimerCapsule) {
+func sinkAddToBuffer(sinkBuffer *SinkBuffer, sinkConfig *SinkConfig, prefix string, event string) {
 
 	// len gets the number of bytes in string, not the number of characters in the string
 	if len(event)+sinkBuffer.Size <= sinkConfig.BatchMaxBytes {
@@ -97,24 +99,11 @@ func sinkAddToBuffer(sinkBuffer *SinkBuffer, sinkConfig *SinkConfig, prefix stri
 		log.Logger.Info("Flush: MaxBytes")
 
 		// Sends buffer to be flushed, and resets buffer
-		flushSinkBuffer(sinkConfig, prefix, sinkBuffer, timeChan)
+		flushSinkBuffer(sinkConfig, prefix, sinkBuffer)
 
 		// Append to freshly reset buffer
 		sinkBuffer.BufferList = append(sinkBuffer.BufferList, event)
 		sinkBuffer.Size += len(event)
-
-		/*
-			// Flush buffered list to the sink
-			sinkConfig.FlushChan <- capsule.Capsule{Prefix: prefix, EventList: sinkBuffer.BufferList}
-
-			// Reset buffer
-			sinkBuffer.BufferList = []string{event}
-			sinkBuffer.Size = len(event)
-			sinkBuffer.LastFlush = time.Now()
-
-			go startSinkTimer(sinkConfig.BatchMaxTime, timeChan,
-				capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
-		*/
 	}
 }
 
@@ -156,22 +145,21 @@ func flushNode(sinkConfig *SinkConfig) {
 }
 
 // closeSinks closes all the sinks
-func closeSinks(snks map[int]*SinkConfig, timeChan chan capsule.SinkTimerCapsule) {
+func closeSinks(snks map[int]*SinkConfig) {
 	for _, sink := range snks {
-		flushSinkBuffers(sink, timeChan)
+		flushSinkBuffers(sink)
 		close(sink.FlushChan)
 	}
 }
 
 // flushSinkBuffers flushes all the buffers of a sink
-func flushSinkBuffers(sink *SinkConfig, timeChan chan capsule.SinkTimerCapsule) {
+func flushSinkBuffers(sink *SinkConfig) {
 	for prefix, v := range sink.Prefix {
-		//sink.FlushChan <- capsule.Capsule{Prefix: prefix, EventList: v.BufferList}
-		flushSinkBuffer(sink, prefix, v, timeChan)
+		flushSinkBuffer(sink, prefix, v)
 	}
 }
 
-func flushSinkBuffer(sinkConfig *SinkConfig, prefix string, sinkBuffer *SinkBuffer, timeChan chan capsule.SinkTimerCapsule) {
+func flushSinkBuffer(sinkConfig *SinkConfig, prefix string, sinkBuffer *SinkBuffer) {
 	// Flush buffered list to the sink
 	sinkConfig.FlushChan <- capsule.Capsule{Prefix: prefix, EventList: sinkBuffer.BufferList}
 
@@ -180,11 +168,11 @@ func flushSinkBuffer(sinkConfig *SinkConfig, prefix string, sinkBuffer *SinkBuff
 	sinkBuffer.Size = 0
 	sinkBuffer.LastFlush = time.Now()
 
-	go startSinkTimer(sinkConfig.BatchMaxTime, timeChan,
+	go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
 		capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
 }
 
-func handleSinkTimer(tc capsule.SinkTimerCapsule, snks map[int]*SinkConfig, timeChan chan capsule.SinkTimerCapsule) {
+func handleSinkTimer(tc capsule.SinkTimerCapsule, snks map[int]*SinkConfig) {
 
 	sinkConfig := snks[tc.SinkId]
 	sinkBuffer := snks[tc.SinkId].Prefix[tc.Prefix]
@@ -194,6 +182,6 @@ func handleSinkTimer(tc capsule.SinkTimerCapsule, snks map[int]*SinkConfig, time
 	if sinkBuffer.LastFlush == tc.LastFlush {
 		log.Logger.Info("Flush: MaxTime")
 		// Sends buffer to be flushed, and resets buffer
-		flushSinkBuffer(sinkConfig, tc.Prefix, sinkBuffer, timeChan)
+		flushSinkBuffer(sinkConfig, tc.Prefix, sinkBuffer)
 	}
 }
