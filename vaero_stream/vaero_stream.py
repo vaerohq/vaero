@@ -38,42 +38,20 @@ class VaeroStream():
         return self._addToTaskGraph(node)
 
     def _addToTaskGraph(self, node : Mapping[str, Any]) -> VaeroStream:
+        node["next"] = []
 
         # first node
         if self._ptr == None:
-            self._ptr = node
-            VaeroStream.tg_start = node
-            node["next"] = []
+            self._ptr = VaeroStream.tg_start = node
             return VaeroStream(node)
-        # if at the end of the list, then append
-        elif len(self._ptr.get("next")) == 0:
-            self._ptr["next"].append(node)
-            node["next"] = []
-            return VaeroStream(node)
-        # not at end of array, so have to add branch
+        # add to list at ptr location
         else:
             self._ptr["next"].append(node)
-            node["next"] = []
-
-            #next_op = self._arr[self._loc]
-
-            # if the next op is not a branch op, create the branch op
-            #if next_op.get("type") != "branch":
-                # put the tail of the current array into a branch
-            #    next_op = {"type" : "branch", "branches" : [self._arr[self._loc:]]}
-            #    self._arr[self._loc] = next_op
-            #    del self._arr[self._loc + 1:] # trims the array
-
-            # add new branch
-            #next_op.get("branches").append([node])
-
             return VaeroStream(node)
 
     # Convert the task graph into json and print to stdout
     @classmethod
     def start(cls):
-        #VaeroStream.printLinkedList(VaeroStream.tg_start)
-
         task_graph = VaeroStream.linkedListToArr(VaeroStream.tg_start)
 
         json_graph = json.dumps(task_graph)
@@ -93,21 +71,18 @@ class VaeroStream():
         node = start_node
         while node != None:
             result.append(node)
+            next_list = node.pop("next", None) # remove the next field (the array keeps the order)
 
-            if len(node["next"]) == 0:
-                node.pop("next", None) # remove the next field (the array keeps the order)
+            if len(next_list) == 0:
                 break
-            elif len(node["next"]) == 1:
-                next_list = node.pop("next", None) # remove the next field (the array keeps the order)
+            elif len(next_list) == 1:
                 node = next_list[0]
-                #node = node["next"][0]
             else:
                 post = []
-                for next_node in node["next"]:
+                for next_node in next_list:
                     sub = VaeroStream.linkedListToArr(next_node)
                     post.append(sub)
                 result.append(post)
-                next_list = node.pop("next", None) # remove the next field (the array keeps the order)
                 break
         
         return result
