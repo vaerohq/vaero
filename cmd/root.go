@@ -23,6 +23,7 @@ to quickly create a Cobra application.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		log.InitLogger()
 		c.InitTables()
+		CheckPython()
 	},
 	PersistentPostRun: func(cmd *cobra.Command, args []string) {
 		log.SyncLogger()

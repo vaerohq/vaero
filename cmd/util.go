@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"os/exec"
+	"regexp"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/vaerohq/vaero/execute"
@@ -21,6 +24,22 @@ type ControlDB struct {
 var c ControlDB
 
 var executor execute.Executor
+
+// CheckPython checks if Python3 is installed
+func CheckPython() {
+	output, err := exec.Command("python", "-V").Output()
+	if err != nil {
+		log.Logger.Fatal("Python not found. Python 3.X must be installed and accessible from command 'python'.")
+	}
+
+	r := regexp.MustCompile(`Python 3\..*`)
+
+	if !r.MatchString(string(output)) {
+		log.Logger.Fatal("Python 3.X must be installed and accessible from command 'python'", zap.String("Version", string(output)))
+	}
+
+	log.Logger.Info("Python found", zap.String("Version", string(output)))
+}
 
 // InitTables creates Vaero's DB tables if they do not exist
 func (c *ControlDB) InitTables() {
@@ -59,18 +78,56 @@ func (c *ControlDB) InitTables() {
 
 // AddHandler adds the job as staged
 func (c *ControlDB) AddHandler(specName string) {
-	sqlStmt := fmt.Sprintf(`
-		INSERT INTO %s (interval, task_graph, spec, status, alive)
-		values(?, ?, ?, ?, ?)
-		`, jobsTable)
 
-	stmt, err := c.db.Prepare(sqlStmt)
-	defer stmt.Close()
+	// Check if spec file exists
+	if _, err := os.Stat(specName); err != nil {
+		if os.IsNotExist(err) {
+			log.Logger.Fatal("File not found", zap.String("Filename", specName))
+		} else {
+			log.Logger.Fatal(err.Error())
+		}
+	}
 
-	_, err = stmt.Exec(10, -1, specName, "staged", 1)
+	// Run the Python spec file and read stdout
+	moduleName := convertToModuleName(specName) // to import sibling or higher modules, we need to use python -m flag and module name format
+
+	log.Logger.Info("Converted file name to module name", zap.String("file name", specName), zap.String("module name", moduleName))
+
+	output, err := exec.Command("python", "-m", moduleName).Output()
 	if err != nil {
 		log.Logger.Fatal(err.Error())
 	}
+	fmt.Println(string(output))
+
+	// Add back later
+	/*
+		sqlStmt := fmt.Sprintf(`
+			INSERT INTO %s (interval, task_graph, spec, status, alive)
+			values(?, ?, ?, ?, ?)
+			`, jobsTable)
+
+		stmt, err := c.db.Prepare(sqlStmt)
+		defer stmt.Close()
+
+		_, err = stmt.Exec(10, -1, specName, "staged", 1)
+		if err != nil {
+			log.Logger.Fatal(err.Error())
+		}
+	*/
+}
+
+// convertToModuleName converts a file path to be usable with python -m flag
+// it converts path/pipe.py to path.pipe
+func convertToModuleName(specName string) string {
+
+	// remove file extension
+	r := regexp.MustCompile(`\.[^.]{1,3}$`)
+	result := r.ReplaceAllLiteralString(specName, ``)
+
+	// convert / to .
+	result = strings.Replace(result, `/`, `.`, -1)
+
+	return result
 }
 
 // DeleteHandler deletes the job with id. If not found, do nothing.
