@@ -134,16 +134,16 @@ func flushNode(sinkConfig *SinkConfig) {
 	switch sinkConfig.Type {
 	case "stdout":
 		s = &sinks.StdoutSink{}
-	case "s3": // REPLACE FOR S3
-		s = &sinks.StdoutSink{}
-	case "datadog": // REPLACE FOR DATADOG
-		s = &sinks.StdoutSink{}
-	case "elastic": // REPLACE FOR ELASTIC
-		s = &sinks.StdoutSink{}
-	case "splunk": // REPLACE FOR SPLUNK
-		s = &sinks.StdoutSink{}
-	default: // REPLACE FOR DEFAULT
-		s = &sinks.StdoutSink{}
+	case "s3":
+		s = &sinks.S3Sink{}
+	case "datadog":
+		s = &sinks.DatadogSink{}
+	case "elastic":
+		s = &sinks.ElasticSink{}
+	case "splunk":
+		s = &sinks.SplunkSink{}
+	default:
+		log.Logger.Error("Unknown sink", zap.String("sink", sinkConfig.Type))
 	}
 
 	// Initialize sink
@@ -160,7 +160,6 @@ func flushNode(sinkConfig *SinkConfig) {
 
 		// Flush
 		if len(event.EventList) > 0 {
-			log.Logger.Info("Flush", zap.String("Type", sinkConfig.Type))
 			s.Flush(event.Prefix, event.EventList)
 		}
 	}
