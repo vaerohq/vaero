@@ -1,6 +1,6 @@
-from vaero_stream.vaero_stream import VaeroStream
+from vaero_stream import Vaero
 
-vs = VaeroStream()
+vs = Vaero()
 
 result = vs.source("random", 10) \
         .add("newfield", 42)
@@ -25,4 +25,4 @@ result.add("author", "Stan Lee") \
         .add("title", "Spiderman") \
         .sink("splunk")
 
-VaeroStream.start()
+Vaero.start()
