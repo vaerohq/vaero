@@ -3,8 +3,10 @@ module github.com/vaerohq/vaero
 go 1.19
 
 require (
+	github.com/google/uuid v1.3.0
 	github.com/lestrrat-go/strftime v1.0.6
 	github.com/mattn/go-sqlite3 v1.14.16
+	github.com/mitchellh/mapstructure v1.5.0
 	github.com/spf13/cobra v1.6.1
 	github.com/tidwall/gjson v1.14.4
 	github.com/tidwall/sjson v1.2.5

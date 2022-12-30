@@ -13,7 +13,7 @@ class VaeroStream():
         self._ptr = ptr # self._node is a pointer to the node at the current place of this instance
 
     def source(self, source_type: str, interval: int = 0) -> VaeroStream:
-        node = {"type" : "source", "op" : source_type, "interval" : interval}
+        node = {"type" : "source", "op" : source_type, "args" : {"interval" : interval}}
 
         return self._addToTaskGraph(node)
     
@@ -23,17 +23,17 @@ class VaeroStream():
         return self._addToTaskGraph(node)
 
     def add(self, path: str, value: Any) -> VaeroStream:
-        node = {"type" : "tn", "op" : "add", "path" : path, "value" : value}
+        node = {"type" : "tn", "op" : "add", "args" : {"path" : path, "value" : value}}
 
         return self._addToTaskGraph(node)
 
     def delete(self, path: str) -> VaeroStream:
-        node = {"type" : "tn", "op" : "delete", "path" : path}
+        node = {"type" : "tn", "op" : "delete", "args" : {"path" : path}}
 
         return self._addToTaskGraph(node)
 
     def rename(self, path: str, new_path: str) -> VaeroStream:
-        node = {"type" : "tn", "op" : "rename", "path" : path, "new_path" : new_path}
+        node = {"type" : "tn", "op" : "rename", "args" : {"path" : path, "new_path" : new_path}}
 
         return self._addToTaskGraph(node)
 

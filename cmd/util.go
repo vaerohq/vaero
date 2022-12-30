@@ -8,7 +8,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/mitchellh/mapstructure"
+	"github.com/tidwall/gjson"
 	"github.com/vaerohq/vaero/execute"
 	"github.com/vaerohq/vaero/log"
 	"go.uber.org/zap"
@@ -67,7 +70,7 @@ func (c *ControlDB) InitTables() {
 
 	sqlStmt := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (id INTEGER NOT NULL PRIMARY KEY, interval INTEGER,
-			task_graph BLOB, spec TEXT, status TEXT CHECK( status IN ("staged", "running") ), alive INTEGER);
+			task_graph TEXT, spec TEXT, status TEXT CHECK( status IN ("staged", "running") ), alive INTEGER);
 		`, jobsTable)
 
 	_, err = c.db.Exec(sqlStmt)
@@ -97,23 +100,22 @@ func (c *ControlDB) AddHandler(specName string) {
 	if err != nil {
 		log.Logger.Fatal(err.Error())
 	}
-	fmt.Println(string(output))
+	taskGraphStr := string(output)
+	log.Logger.Info("Generated task graph", zap.String("task graph", taskGraphStr))
 
 	// Add back later
-	/*
-		sqlStmt := fmt.Sprintf(`
-			INSERT INTO %s (interval, task_graph, spec, status, alive)
-			values(?, ?, ?, ?, ?)
-			`, jobsTable)
+	sqlStmt := fmt.Sprintf(`
+		INSERT INTO %s (interval, task_graph, spec, status, alive)
+		values(?, ?, ?, ?, ?)
+		`, jobsTable)
 
-		stmt, err := c.db.Prepare(sqlStmt)
-		defer stmt.Close()
+	stmt, err := c.db.Prepare(sqlStmt)
+	defer stmt.Close()
 
-		_, err = stmt.Exec(10, -1, specName, "staged", 1)
-		if err != nil {
-			log.Logger.Fatal(err.Error())
-		}
-	*/
+	_, err = stmt.Exec(10, taskGraphStr, specName, "staged", 1)
+	if err != nil {
+		log.Logger.Fatal(err.Error())
+	}
 }
 
 // convertToModuleName converts a file path to be usable with python -m flag
@@ -183,13 +185,13 @@ func (c *ControlDB) ListHandler() {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, interval, task_graph, alive int
-		var spec, status string
-		err = rows.Scan(&id, &interval, &task_graph, &spec, &status, &alive)
+		var id, interval, alive int
+		var spec, status, taskGraphStr string
+		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
 		if err != nil {
 			log.Logger.Fatal(err.Error())
 		}
-		fmt.Printf("%d %d %d %s %s %d\n", id, interval, task_graph, spec, status, alive)
+		fmt.Printf("%d %d %s %s %s %d\n", id, interval, taskGraphStr, spec, status, alive)
 	}
 	err = rows.Err()
 	if err != nil {
@@ -209,22 +211,23 @@ func (c *ControlDB) StartHandler() {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var id, interval, taskGraph, alive int
-		var spec, status string
-		err = rows.Scan(&id, &interval, &taskGraph, &spec, &status, &alive)
+		var id, interval, alive int
+		var spec, status, taskGraphStr string
+		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
 		if err != nil {
 			log.Logger.Fatal(err.Error())
 		}
 		if status == "staged" {
-			//fmt.Printf("Start new run of: %d %d %d %s %s %d\n", id, interval, taskGraph, spec, status, alive)
 			log.Logger.Info("Start new run",
 				zap.Int("id", id),
 				zap.Int("interval", interval),
-				zap.Int("taskGraph", taskGraph),
+				zap.String("taskGraph", taskGraphStr),
 				zap.String("spec", spec),
 				zap.String("status", status),
 				zap.Int("alive", alive),
 			)
+
+			taskGraph := genTaskGraph(taskGraphStr)
 
 			// Initiate run here
 			executor.RunJob(interval, taskGraph)
@@ -268,4 +271,37 @@ func (c *ControlDB) StopHandler(id int) {
 	if err != nil {
 		log.Logger.Fatal(err.Error())
 	}
+}
+
+// genTaskGraph generates a task graph of OpTasks from a taskGraphStr
+func genTaskGraph(taskGraphStr string) []execute.OpTask {
+	jsonGraph := gjson.Parse(taskGraphStr).Value().([]interface{})
+
+	taskGraph := genTaskGraphHelper(jsonGraph)
+
+	fmt.Printf("Task graph %v", taskGraph)
+
+	return taskGraph
+}
+
+func genTaskGraphHelper(jsonGraph []interface{}) []execute.OpTask {
+	taskGraph := []execute.OpTask{}
+	for _, v := range jsonGraph {
+		switch tk := v.(type) {
+		case map[string]interface{}: // handle regular ops
+			var op execute.OpTask
+			mapstructure.Decode(tk, &op)
+			op.Id = uuid.New()
+			taskGraph = append(taskGraph, op)
+		case []interface{}: // handle arrays, which represent branching
+			var op execute.OpTask = execute.OpTask{Type: "branch", Branches: make([][]execute.OpTask, 0), Id: uuid.New()}
+
+			for _, sub := range tk {
+				op.Branches = append(op.Branches, genTaskGraphHelper(sub.([]interface{})))
+			}
+			taskGraph = append(taskGraph, op)
+		}
+	}
+
+	return taskGraph
 }

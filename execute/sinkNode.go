@@ -3,6 +3,7 @@ package execute
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/lestrrat-go/strftime"
 	"github.com/tidwall/gjson"
 	"github.com/vaerohq/vaero/capsule"
@@ -13,7 +14,7 @@ import (
 )
 
 type SinkConfig struct {
-	Id            int
+	Id            uuid.UUID
 	Type          string
 	Prefix        map[string]*SinkBuffer
 	BatchMaxBytes int
@@ -29,22 +30,32 @@ type SinkBuffer struct {
 }
 
 // initSinkNode performs initialize for the sink node
-func initSinkNode(sinks map[int]*SinkConfig, sinkTargets []int, timeChan chan capsule.SinkTimerCapsule) {
+func initSinkNode(sinks map[uuid.UUID]*SinkConfig /*sinkTargets []uuid.UUID*/, taskGraph []OpTask, timeChan chan capsule.SinkTimerCapsule) {
 
-	// Initialize all sinks
-	for _, sinkTarget := range sinkTargets {
-		// Create configuration for a sink
-		sinks[sinkTarget] = &SinkConfig{Id: sinkTarget, Type: "stdout", BatchMaxBytes: 2_500, BatchMaxTime: 2,
-			Prefix: make(map[string]*SinkBuffer), FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen),
-			TimeChan: timeChan}
+	initSinksFromTaskGraph(sinks, taskGraph, timeChan)
+}
 
-		// Create goroutine to flush to the sink
-		go flushNode(sinks[sinkTarget])
+// initSinks finds all the sinks in the task graph and initializes them
+func initSinksFromTaskGraph(sinks map[uuid.UUID]*SinkConfig, taskGraph []OpTask, timeChan chan capsule.SinkTimerCapsule) {
+	for _, v := range taskGraph {
+		if v.Type == "sink" {
+			// Create configuration for a sink
+			sinks[v.Id] = &SinkConfig{Id: v.Id, Type: v.Op, BatchMaxBytes: 2_500, BatchMaxTime: 2,
+				Prefix: make(map[string]*SinkBuffer), FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen),
+				TimeChan: timeChan}
+
+			// Create goroutine to flush to the sink
+			go flushNode(sinks[v.Id])
+		} else if v.Type == "branch" {
+			for _, branch := range v.Branches {
+				initSinksFromTaskGraph(sinks, branch, timeChan)
+			}
+		}
 	}
 }
 
 // sinkBatch adds events to a sink buffer and flushes if needed
-func sinkBatch(c *capsule.Capsule, sinks map[int]*SinkConfig) {
+func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*SinkConfig) {
 
 	// These are temp variables that will be user specified
 	var timeField string = "time"     // the path to the timestamp
@@ -115,13 +126,23 @@ func startSinkTimer(delay int, timeChan chan capsule.SinkTimerCapsule, tc capsul
 
 func flushNode(sinkConfig *SinkConfig) {
 	defer func() {
-		log.Logger.Info("Closing sinkFlusher", zap.Int("id", sinkConfig.Id))
+		log.Logger.Info("Closing sinkFlusher", zap.String("id", sinkConfig.Id.String()), zap.String("Type", sinkConfig.Type))
 	}()
 
 	// Choose sink type based on taskGraph
 	var s sinks.Sink
 	switch sinkConfig.Type {
 	case "stdout":
+		s = &sinks.StdoutSink{}
+	case "s3": // REPLACE FOR S3
+		s = &sinks.StdoutSink{}
+	case "datadog": // REPLACE FOR DATADOG
+		s = &sinks.StdoutSink{}
+	case "elastic": // REPLACE FOR ELASTIC
+		s = &sinks.StdoutSink{}
+	case "splunk": // REPLACE FOR SPLUNK
+		s = &sinks.StdoutSink{}
+	default: // REPLACE FOR DEFAULT
 		s = &sinks.StdoutSink{}
 	}
 
@@ -139,13 +160,14 @@ func flushNode(sinkConfig *SinkConfig) {
 
 		// Flush
 		if len(event.EventList) > 0 {
+			log.Logger.Info("Flush", zap.String("Type", sinkConfig.Type))
 			s.Flush(event.Prefix, event.EventList)
 		}
 	}
 }
 
 // closeSinks closes all the sinks
-func closeSinks(snks map[int]*SinkConfig) {
+func closeSinks(snks map[uuid.UUID]*SinkConfig) {
 	for _, sink := range snks {
 		flushSinkBuffers(sink)
 		close(sink.FlushChan)
@@ -172,7 +194,7 @@ func flushSinkBuffer(sinkConfig *SinkConfig, prefix string, sinkBuffer *SinkBuff
 		capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
 }
 
-func handleSinkTimer(tc capsule.SinkTimerCapsule, snks map[int]*SinkConfig) {
+func handleSinkTimer(tc capsule.SinkTimerCapsule, snks map[uuid.UUID]*SinkConfig) {
 
 	sinkConfig := snks[tc.SinkId]
 	sinkBuffer := snks[tc.SinkId].Prefix[tc.Prefix]

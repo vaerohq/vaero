@@ -1,30 +1,77 @@
 package execute
 
 import (
-	"fmt"
+	"strings"
 
+	"github.com/vaerohq/vaero/capsule"
+	"github.com/vaerohq/vaero/log"
 	"github.com/vaerohq/vaero/transform"
 )
 
-func transformProcess(eventList []string, taskGraph []string) []string {
+func transformProcess(eventList []string, taskGraph []OpTask, tnOut chan capsule.Capsule) []string {
 	for _, v := range taskGraph {
-		switch v {
-		case "add":
-			fmt.Println("add")
-			eventList = transform.AddAll(eventList, "newField.sub.graph", 538)
-			eventList = transform.AddAll(eventList, "newField.sub.graph2", "We're not in Kansas anymore")
-			eventList = transform.AddAll(eventList, "newField.sub.graph3", []string{"one", "two", "three"})
-		case "delete":
-			fmt.Println("delete")
-			//eventList = transform.DeleteAll(eventList, "severity")
-			eventList = transform.DeleteAll(eventList, "newField.sub.graph2")
-		case "rename":
-			fmt.Println("rename")
-			eventList = transform.RenameAll(eventList, "newField.sub.graph3", "totally.new.field")
-		default:
-			fmt.Println("unknown op")
+		// task is a transform, so perform the task
+		if v.Type == "tn" {
+			switch v.Op {
+			case "add":
+				eventList = transform.AddAll(eventList, v.Args["path"].(string), v.Args["value"])
+			case "delete":
+				eventList = transform.DeleteAll(eventList, v.Args["path"].(string))
+			case "rename":
+				eventList = transform.RenameAll(eventList, v.Args["path"].(string), v.Args["new_path"].(string))
+			default:
+				log.Logger.Warn("Unknown op")
+			}
+		} else if v.Type == "branch" { // Branch
+
+			// Iterate over all branches, the first branch receives the eventList. Each additional branch receives a copy
+			// of the eventList.
+
+			// Must make copies of eventList before the eventList is manipulated
+			copyList := make([][]string, len(v.Branches))
+			for idx := range v.Branches {
+				if idx == 0 {
+					// First branch uses the original data
+					copyList[idx] = eventList
+				} else {
+					// Make a copy for later branches
+					copyList[idx] = make([]string, len(eventList))
+					copy(copyList[idx], eventList)
+				}
+			}
+
+			// Perform transforms
+			for idx, branch := range v.Branches {
+				transformProcess(copyList[idx], branch, tnOut)
+				// Use the eventList if this is the first branch
+				/*
+					if idx == 0 {
+						transformProcess(eventList, branch, tnOut)
+					} else {
+						// Operate on a copy
+						transformProcess(copyList[idx], branch, tnOut)
+					}
+				*/
+			}
+		} else if v.Type == "sink" { // When reach a sink, transmit to the sinkNode with the sinkId as a tag
+
+			tnOut <- capsule.Capsule{SinkId: v.Id, EventList: eventList}
+			// capsule and eventList unsafe to access after sending
 		}
 	}
 
 	return eventList
+}
+
+// copyEventList makes a copy of the event list by deep copying all strings
+// Deprecated: This is not needed. Even though Go copies string pointrs shallowly, when strings
+// are edited the underlying pointer is changed, so other copies are protected from changes.
+func copyEventList(eventList []string) []string {
+	copyList := make([]string, len(eventList))
+
+	for idx, v := range eventList {
+		copyList[idx] = strings.Clone(v)
+	}
+
+	return copyList
 }

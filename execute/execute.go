@@ -6,8 +6,8 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/google/uuid"
 	"github.com/vaerohq/vaero/capsule"
-	"github.com/vaerohq/vaero/integrations/sources"
 	"github.com/vaerohq/vaero/log"
 	"github.com/vaerohq/vaero/settings"
 )
@@ -16,25 +16,24 @@ type Executor struct {
 }
 
 // RunJob runs a job for the taskGraph. The job runs as a set of forever-running goroutines until stopped.
-func (executor *Executor) RunJob(interval int, taskGraph int) {
-	log.Logger.Info("RunJob", zap.Int("interval", interval), zap.Int("taskGraph", taskGraph))
+func (executor *Executor) RunJob(interval int, taskGraph []OpTask) {
+	log.Logger.Info("RunJob", zap.Int("interval", interval))
 
 	var done chan int = make(chan int)
 	var srcOut chan capsule.Capsule = make(chan capsule.Capsule, settings.DefChanBufferLen)
 	var tnOut chan capsule.Capsule = make(chan capsule.Capsule, settings.DefChanBufferLen)
 
-	go sourceNode(done, srcOut)
-	go transformNode(srcOut, tnOut)
-	go sinkNode(tnOut)
+	go sourceNode(done, srcOut, taskGraph)
+	go transformNode(srcOut, tnOut, taskGraph)
+	go sinkNode(tnOut, taskGraph)
 
 	// Test killing all goroutines
 	time.Sleep(time.Second * 8)
 	done <- 1
 }
 
-func sourceNode(done chan int, srcOut chan capsule.Capsule) {
-	var source sources.Source
-	source = &sources.RandomSource{}
+func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) {
+	source := identifySource(taskGraph)
 
 	defer func() {
 		close(srcOut)
@@ -42,7 +41,7 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule) {
 	}()
 
 	// main loop
-	count := 0 // temp
+	//count := 0 // temp
 	for {
 		select {
 		case _ = <-done:
@@ -54,23 +53,24 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule) {
 			// capsule and eventList unsafe to access after sending
 
 			// TEMP
-			if count%2 == 0 {
-				time.Sleep(time.Second * 0)
-			} else {
-				time.Sleep(time.Second * 3)
-			}
-			count++
+			time.Sleep(time.Second * 4)
+			/*
+				if count%2 == 0 {
+					time.Sleep(time.Second * 0)
+				} else {
+					time.Sleep(time.Second * 3)
+				}
+				count++
+			*/
 		}
 	}
 }
 
-func transformNode(srcOut chan capsule.Capsule, tnOut chan capsule.Capsule) {
+func transformNode(srcOut chan capsule.Capsule, tnOut chan capsule.Capsule, taskGraph []OpTask) {
 	defer func() {
 		close(tnOut)
 		log.Logger.Info("Closing transformNode")
 	}()
-
-	taskGraph := []string{"add", "delete", "rename"}
 
 	// main loop
 	for {
@@ -84,17 +84,13 @@ func transformNode(srcOut chan capsule.Capsule, tnOut chan capsule.Capsule) {
 		fmt.Printf("TransformNode received: %v\n", event.EventList)
 
 		// Perform transformations
-		fmt.Println("Parse")
-		eventList := transformProcess(event.EventList, taskGraph)
-
-		tnOut <- capsule.Capsule{SinkId: 1001, EventList: eventList}
-		// capsule and eventList unsafe to access after sending
+		transformProcess(event.EventList, taskGraph, tnOut)
 	}
 }
 
-func sinkNode(tnOut chan capsule.Capsule) {
+func sinkNode(tnOut chan capsule.Capsule, taskGraph []OpTask) {
 	// sinks map stores all sinks
-	var snks = make(map[int]*SinkConfig)
+	var snks = make(map[uuid.UUID]*SinkConfig)
 
 	// channel for timers
 	timeChan := make(chan capsule.SinkTimerCapsule, settings.DefChanBufferLen)
@@ -104,9 +100,7 @@ func sinkNode(tnOut chan capsule.Capsule) {
 		log.Logger.Info("Closing sinkNode")
 	}()
 
-	sinkTargets := []int{1001, 1002} // temp
-
-	initSinkNode(snks, sinkTargets, timeChan)
+	initSinkNode(snks, taskGraph, timeChan)
 
 	// main loop
 	for {
