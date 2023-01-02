@@ -1,0 +1,4 @@
+name = "okta1"
+max_calls_per_period = 30
+limit_period= 60
+max_retries = 5

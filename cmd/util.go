@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/vaerohq/vaero/execute"
 	"github.com/vaerohq/vaero/log"
+	"github.com/vaerohq/vaero/settings"
 	"go.uber.org/zap"
 )
 
@@ -30,11 +32,23 @@ var executor execute.Executor
 
 // CheckPython checks if Python3 is installed
 func CheckPython() {
-	output, err := exec.Command("python", "-V").Output()
+
+	// Run python
+	cmd := exec.Command("python", "-V")
+
+	// Activate virtual environment if selected
+	if settings.PythonVenv != "" {
+		cmd.Path = filepath.Join(settings.PythonVenv, "python")
+	}
+
+	// Run command
+	output, err := cmd.Output()
+
 	if err != nil {
 		log.Logger.Fatal("Python not found. Python 3.X must be installed and accessible from command 'python'.")
 	}
 
+	// Check for Python 3
 	r := regexp.MustCompile(`Python 3\..*`)
 
 	if !r.MatchString(string(output)) {
@@ -96,7 +110,17 @@ func (c *ControlDB) AddHandler(specName string) {
 
 	log.Logger.Info("Converted file name to module name", zap.String("file name", specName), zap.String("module name", moduleName))
 
-	output, err := exec.Command("python", "-m", moduleName).Output()
+	// Generate command
+	cmd := exec.Command("python", "-m", moduleName)
+
+	// Activate virtual environment if selected
+	if settings.PythonVenv != "" {
+		cmd.Path = filepath.Join(settings.PythonVenv, "python")
+	}
+
+	// Run command
+	output, err := cmd.Output()
+
 	if err != nil {
 		log.Logger.Fatal(err.Error())
 	}

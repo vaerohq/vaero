@@ -33,7 +33,18 @@ func (executor *Executor) RunJob(interval int, taskGraph []OpTask) {
 }
 
 func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) {
-	source := identifySource(taskGraph)
+
+	// check the first task of the task graph to identify the source
+	if len(taskGraph) <= 0 {
+		log.Logger.Fatal("Task graph is empty")
+	}
+
+	if taskGraph[0].Type != "source" {
+		log.Logger.Fatal("Task graph does not start with a source")
+	}
+
+	sourceConfig := initSourceConfig(&taskGraph[0])
+	source := identifySource(sourceConfig.SourceTask)
 
 	defer func() {
 		close(srcOut)
@@ -48,6 +59,18 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) 
 			return
 
 		default:
+
+			// Refresh secrets if needed
+			if len(sourceConfig.SourceTask.Secret) != 0 &&
+				time.Now().Sub(sourceConfig.LastSecretsRefresh) > sourceConfig.SecretsCacheTime {
+				log.Logger.Info("Refreshed secrets")
+				newSecrets := getSecrets(sourceConfig.SourceTask.Secret)
+				applySecrets(sourceConfig.SourceTask, newSecrets)
+				source = updateSource(source, sourceConfig.SourceTask)
+				sourceConfig.LastSecretsRefresh = time.Now()
+			}
+
+			// Read from source
 			capsule := capsule.Capsule{EventList: source.Read()} // read from source, and create capsule
 			srcOut <- capsule                                    // send capsule to transformNode
 			// capsule and eventList unsafe to access after sending

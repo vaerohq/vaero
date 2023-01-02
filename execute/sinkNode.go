@@ -58,9 +58,9 @@ func initSinksFromTaskGraph(sinks map[uuid.UUID]*SinkConfig, taskGraph []OpTask,
 func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*SinkConfig) {
 
 	// These are temp variables that will be user specified
-	var timeField string = "time"     // the path to the timestamp
-	var layout string = time.RFC3339  // pattern of the timestamp
-	var prefixPat string = "%Y/%m/%H" // prefix pattern
+	var timeField string = "published" //"time"     // the path to the timestamp
+	var layout string = time.RFC3339   // pattern of the timestamp
+	var prefixPat string = `%Y/%m/%d`  // prefix pattern
 
 	// Strftime formatter
 	prefixFormatter, err := strftime.New(prefixPat, strftime.WithUnixSeconds('s'))

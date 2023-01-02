@@ -1,5 +1,6 @@
 from __future__ import annotations # enable using class type in the class
 import json
+import tomli
 from typing import Any, List, Mapping, Optional
 
 class Vaero():
@@ -10,15 +11,21 @@ class Vaero():
     tg_start = None # pointer to first node of global task graph
 
     def __init__(self, ptr: Mapping[str, Any] = None):
-        self._ptr = ptr # self._node is a pointer to the node at the current place of this instance
+        self._ptr = ptr # self._ptr is a pointer to the node at the current place of this instance
 
-    def source(self, source_type: str, interval: int = 0) -> Vaero:
-        node = {"type" : "source", "op" : source_type, "args" : {"interval" : interval}}
+    def source(self, source_type: str, interval: int = 0, host: str = "",
+                token: str = "", name: str = "", max_calls_per_period: int = 60, limit_period : int = 60,
+                max_retries: int = 6) -> Vaero:
+                
+        node = {"type" : "source", "op" : source_type,
+                "args" : {"interval" : interval, "host" : host, "token" : token, "name" : name,
+                "max_calls_per_period" : max_calls_per_period, "limit_period" : limit_period,
+                "max_retries" : max_retries}}
 
         return self._addToTaskGraph(node)
     
     def sink(self, sink_type: str) -> Vaero:
-        node = {"type" : "sink", "op" : sink_type}
+        node = {"type" : "sink", "op" : sink_type, "args" : {}}
 
         return self._addToTaskGraph(node)
 
@@ -37,8 +44,40 @@ class Vaero():
 
         return self._addToTaskGraph(node)
 
+    # Apply any option to the node. Options are set in the args map.
+    def option(self, arg_name: str, value: Any) -> Vaero:
+        self._ptr.get("args")[arg_name] = value
+
+        return self
+    
+    # Read a toml options file with key = value pairs. Set the key, value  pairs in the args map.
+    # The toml file should be only key = value pairs with no tables / headers.
+    def option_file(self, file_name : str) -> Vaero:
+        with open(file_name, 'rb') as toml_file:
+            parsed = tomli.load(toml_file)
+            self._ptr.get("args").update(parsed)
+
+        return self
+
+    # Apply special option to run a command to get a secret
+    # command will be run
+    # secrets is an array of maps of {secret_name : target_argument} that will be passed on stdin to the command
+    # The output of command should generate a map in format {"arg_name1" : value1, "arg_name2" : value2}
+    def secret(self, command : str = "", secrets : List[str] = [], cache_time_seconds : int = 86400 * 30, timeout_seconds : int = 30) -> Vaero:
+        self._ptr["secret"] = {
+            "command" : command,
+            "secrets" : secrets,
+            "cache_time_seconds" : cache_time_seconds,
+            "timeout_seconds" : timeout_seconds
+        }
+
+        return self
+
     def _addToTaskGraph(self, node : Mapping[str, Any]) -> Vaero:
         node["next"] = []
+
+        if node.get("args") == None:
+            node["args"] = {}
 
         # first node
         if self._ptr == None:
