@@ -1,6 +1,7 @@
 package execute
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,9 +59,9 @@ func initSinksFromTaskGraph(sinks map[uuid.UUID]*SinkConfig, taskGraph []OpTask,
 func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*SinkConfig) {
 
 	// These are temp variables that will be user specified
-	var timeField string = "published" //"time"     // the path to the timestamp
-	var layout string = time.RFC3339   // pattern of the timestamp
-	var prefixPat string = `%Y/%m/%d`  // prefix pattern
+	var timeField string = "time"     //"published"  // the path to the timestamp
+	var layout string = time.RFC3339  // pattern of the timestamp
+	var prefixPat string = `%Y/%m/%d` // prefix pattern
 
 	// Strftime formatter
 	prefixFormatter, err := strftime.New(prefixPat, strftime.WithUnixSeconds('s'))
@@ -87,11 +88,10 @@ func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*SinkConfig) {
 		// Access appropriate buffer based on prefix
 		sinkBuffer, found := sinkConfig.Prefix[prefix]
 		if !found {
-			sinkBuffer = &SinkBuffer{LastFlush: time.Now()}
+			sinkBuffer = createSinkBuffer(sinkConfig, prefix) //&SinkBuffer{LastFlush: time.Now()}
 			sinkConfig.Prefix[prefix] = sinkBuffer
-
-			go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
-				capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
+			//go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
+			//	capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
 		}
 
 		// Append to selected buffer
@@ -109,10 +109,14 @@ func sinkAddToBuffer(sinkBuffer *SinkBuffer, sinkConfig *SinkConfig, prefix stri
 	} else {
 		log.Logger.Info("Flush: MaxBytes")
 
-		// Sends buffer to be flushed, and resets buffer
+		// Sends buffer to be flushed, and deletes buffer
 		flushSinkBuffer(sinkConfig, prefix, sinkBuffer)
 
-		// Append to freshly reset buffer
+		// Create new buffer
+		sinkBuffer = createSinkBuffer(sinkConfig, prefix)
+		sinkConfig.Prefix[prefix] = sinkBuffer
+
+		// Append to new buffer
 		sinkBuffer.BufferList = append(sinkBuffer.BufferList, event)
 		sinkBuffer.Size += len(event)
 	}
@@ -184,23 +188,52 @@ func flushSinkBuffer(sinkConfig *SinkConfig, prefix string, sinkBuffer *SinkBuff
 	// Flush buffered list to the sink
 	sinkConfig.FlushChan <- capsule.Capsule{Prefix: prefix, EventList: sinkBuffer.BufferList}
 
+	// Delete buffer
+	sinkBuffer = nil
+	delete(sinkConfig.Prefix, prefix)
+	//sinkConfig.Prefix[prefix] = nil
+
+	fmt.Printf("Delete sinkbuffer for %v\n", prefix)
+
+	/*
+		// Reset buffer
+		sinkBuffer.BufferList = []string{}
+		sinkBuffer.Size = 0
+		sinkBuffer.LastFlush = time.Now()
+
+		go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
+			capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
+	*/
+}
+
+func createSinkBuffer(sinkConfig *SinkConfig, prefix string) *SinkBuffer {
+	fmt.Printf("createSinkBuffer for %v\n", prefix)
+
+	sinkBuffer := &SinkBuffer{
+		BufferList: []string{},
+		Size:       0,
+		LastFlush:  time.Now(),
+	}
+
 	// Reset buffer
-	sinkBuffer.BufferList = []string{}
-	sinkBuffer.Size = 0
-	sinkBuffer.LastFlush = time.Now()
+	//sinkBuffer.BufferList = []string{}
+	//sinkBuffer.Size = 0
+	//sinkBuffer.LastFlush = time.Now()
 
 	go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
 		capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
+
+	return sinkBuffer
 }
 
 func handleSinkTimer(tc capsule.SinkTimerCapsule, snks map[uuid.UUID]*SinkConfig) {
 
 	sinkConfig := snks[tc.SinkId]
-	sinkBuffer := snks[tc.SinkId].Prefix[tc.Prefix]
+	sinkBuffer, found := snks[tc.SinkId].Prefix[tc.Prefix]
 
 	// If the sinkBuffer has not been flushed since the time that this timer was send, then flush
 	// Otherwise, ignore the timer
-	if sinkBuffer.LastFlush == tc.LastFlush {
+	if found && sinkBuffer.LastFlush == tc.LastFlush {
 		log.Logger.Info("Flush: MaxTime")
 		// Sends buffer to be flushed, and resets buffer
 		flushSinkBuffer(sinkConfig, tc.Prefix, sinkBuffer)

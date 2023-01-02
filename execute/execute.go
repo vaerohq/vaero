@@ -76,7 +76,8 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) 
 			// capsule and eventList unsafe to access after sending
 
 			// TEMP
-			time.Sleep(time.Second * 4)
+			//time.Sleep(time.Second * 4)
+
 			/*
 				if count%2 == 0 {
 					time.Sleep(time.Second * 0)
