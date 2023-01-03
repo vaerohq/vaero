@@ -12,12 +12,12 @@ type DatadogSink struct {
 }
 
 // Init initializes the sink
-func (s *DatadogSink) Init() {
+func (s *DatadogSink) Init(sinkConfig *SinkConfig) {
 
 }
 
 // Flush writes data out to the sink immediately
-func (s *DatadogSink) Flush(prefix string, eventList []string) {
+func (s *DatadogSink) Flush(filename string, prefix string, eventList []string) {
 	/*
 	 * Replace here
 	 */

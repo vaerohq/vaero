@@ -10,7 +10,7 @@ result2 = result.delete("severity") \
 
 result.sink("stdout", timestamp_key = "time")
 
-result2.sink("s3", timestamp_key = "time")
+result2.sink("s3", timestamp_key = "time", bucket = "vaero-go-test")
 
 result2.rename("msg", "mymessage") \
         .sink("datadog", timestamp_key = "time")

@@ -12,12 +12,12 @@ type ElasticSink struct {
 }
 
 // Init initializes the sink
-func (s *ElasticSink) Init() {
+func (s *ElasticSink) Init(sinkConfig *SinkConfig) {
 
 }
 
 // Flush writes data out to the sink immediately
-func (s *ElasticSink) Flush(prefix string, eventList []string) {
+func (s *ElasticSink) Flush(filename string, prefix string, eventList []string) {
 	/*
 	 * Replace here
 	 */

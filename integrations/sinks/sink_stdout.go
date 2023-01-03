@@ -12,12 +12,12 @@ type StdoutSink struct {
 }
 
 // Init initializes the sink
-func (s *StdoutSink) Init() {
+func (s *StdoutSink) Init(sinkConfig *SinkConfig) {
 
 }
 
 // Flush writes data out to the sink immediately
-func (s *StdoutSink) Flush(prefix string, eventList []string) {
+func (s *StdoutSink) Flush(filename string, prefix string, eventList []string) {
 	log.Logger.Info("Flush to Stdout", zap.String("prefix", prefix))
 	fmt.Printf("%v\n", strings.Join(eventList, "\n"))
 }

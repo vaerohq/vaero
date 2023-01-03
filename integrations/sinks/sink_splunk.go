@@ -12,12 +12,12 @@ type SplunkSink struct {
 }
 
 // Init initializes the sink
-func (s *SplunkSink) Init() {
+func (s *SplunkSink) Init(sinkConfig *SinkConfig) {
 
 }
 
 // Flush writes data out to the sink immediately
-func (s *SplunkSink) Flush(prefix string, eventList []string) {
+func (s *SplunkSink) Flush(filename string, prefix string, eventList []string) {
 	/*
 	 * Replace here
 	 */

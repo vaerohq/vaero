@@ -25,12 +25,14 @@ class Vaero():
         return self._addToTaskGraph(node)
     
     def sink(self, sink_type: str, timestamp_key : str = "timestamp", timestamp_format : str = "RFC3339",
-                filename_prefix : str = '%Y/%m/%d', filename_format : str = '%s',
-                batch_max_bytes : int = 1_000_000, batch_max_time: int = 60 * 5) -> Vaero:
+                filename_prefix : str = '%Y/%m/%d', filename_format : str = '%s.log',
+                batch_max_bytes : int = 1_000_000, batch_max_time: int = 60 * 5,
+                bucket : str = "", region : str = "") -> Vaero:
         node = {"type" : "sink", "op" : sink_type,
                 "args" : {"timestamp_key" : timestamp_key, "timestamp_format" : timestamp_format,
                 "filename_prefix" : filename_prefix, "filename_format" : filename_format,
-                "batch_max_bytes" : batch_max_bytes, "batch_max_time" : batch_max_time}}
+                "batch_max_bytes" : batch_max_bytes, "batch_max_time" : batch_max_time,
+                "bucket" : bucket, "region" : region}}
 
         return self._addToTaskGraph(node)
 

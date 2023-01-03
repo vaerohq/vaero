@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/vaerohq/vaero/capsule"
+	"github.com/vaerohq/vaero/integrations/sinks"
 	"github.com/vaerohq/vaero/log"
 	"github.com/vaerohq/vaero/settings"
 )
@@ -114,7 +115,7 @@ func transformNode(srcOut chan capsule.Capsule, tnOut chan capsule.Capsule, task
 
 func sinkNode(tnOut chan capsule.Capsule, taskGraph []OpTask) {
 	// sinks map stores all sinks
-	var snks = make(map[uuid.UUID]*SinkConfig)
+	var snks = make(map[uuid.UUID]*sinks.SinkConfig)
 
 	// channel for timers
 	timeChan := make(chan capsule.SinkTimerCapsule, settings.DefChanBufferLen)
