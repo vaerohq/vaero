@@ -8,6 +8,8 @@ result = vs.source("okta") \
         .secret("./scripts/aws_secrets.py", [{"okta_token" : "token"}, {"okta_host" : "host"}],
                 cache_time_seconds = 86400 * 30) \
         .add("newfield", 42) \
-        .sink("stdout")
+        .sink("stdout", timestamp_key = "published") \
+        .option("batch_max_bytes", 2_500) \
+        .option("batch_max_time", 2)
 
 Vaero.start()

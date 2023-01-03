@@ -28,7 +28,7 @@ func (executor *Executor) RunJob(interval int, taskGraph []OpTask) {
 	go sinkNode(tnOut, taskGraph)
 
 	// Test killing all goroutines
-	time.Sleep(time.Second * 8)
+	time.Sleep(time.Second * 10)
 	done <- 1
 }
 
@@ -76,7 +76,7 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) 
 			// capsule and eventList unsafe to access after sending
 
 			// TEMP
-			//time.Sleep(time.Second * 4)
+			time.Sleep(time.Second * 4)
 
 			/*
 				if count%2 == 0 {

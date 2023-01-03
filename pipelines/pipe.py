@@ -8,21 +8,21 @@ result = vs.source("random", 10) \
 result2 = result.delete("severity") \
             .rename("hostname", "myhost")
 
-result.sink("stdout")
+result.sink("stdout", timestamp_key = "time")
 
-result2.sink("s3")
+result2.sink("s3", timestamp_key = "time")
 
 result2.rename("msg", "mymessage") \
-        .sink("datadog")
+        .sink("datadog", timestamp_key = "time")
 
 result3 = result2.add("author", "Douglas Adams") \
                     .add("title", "Hitchhiker's Guide to the Galaxy")
 
 result3.rename("severity", "myseverity") \
-        .sink("elastic")
+        .sink("elastic", timestamp_key = "time")
 
 result.add("author", "Stan Lee") \
         .add("title", "Spiderman") \
-        .sink("splunk")
+        .sink("splunk", timestamp_key = "time")
 
 Vaero.start()

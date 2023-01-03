@@ -2,6 +2,7 @@ package execute
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,13 +16,17 @@ import (
 )
 
 type SinkConfig struct {
-	Id            uuid.UUID
-	Type          string
-	Prefix        map[string]*SinkBuffer
-	BatchMaxBytes int
-	BatchMaxTime  int
-	FlushChan     chan capsule.Capsule          // channel for sending flushed data (received by FlushNode)
-	TimeChan      chan capsule.SinkTimerCapsule // channel for sending timer expiration (received by SinkNode)
+	Id              uuid.UUID
+	Type            string
+	Prefix          map[string]*SinkBuffer
+	FlushChan       chan capsule.Capsule          // channel for sending flushed data (received by FlushNode)
+	TimeChan        chan capsule.SinkTimerCapsule // channel for sending timer expiration (received by SinkNode)
+	BatchMaxBytes   int
+	BatchMaxTime    int
+	FilenamePrefix  string
+	FilenameFormat  string
+	TimestampKey    string
+	TimestampFormat string
 }
 
 type SinkBuffer struct {
@@ -41,9 +46,13 @@ func initSinksFromTaskGraph(sinks map[uuid.UUID]*SinkConfig, taskGraph []OpTask,
 	for _, v := range taskGraph {
 		if v.Type == "sink" {
 			// Create configuration for a sink
-			sinks[v.Id] = &SinkConfig{Id: v.Id, Type: v.Op, BatchMaxBytes: 2_500, BatchMaxTime: 2,
-				Prefix: make(map[string]*SinkBuffer), FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen),
-				TimeChan: timeChan}
+			sinks[v.Id] = &SinkConfig{Id: v.Id, Type: v.Op, Prefix: make(map[string]*SinkBuffer),
+				FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen), TimeChan: timeChan,
+				BatchMaxBytes: int(v.Args["batch_max_bytes"].(float64)), BatchMaxTime: int(v.Args["batch_max_time"].(float64)),
+				FilenamePrefix: v.Args["filename_prefix"].(string), FilenameFormat: v.Args["filename_format"].(string),
+				TimestampKey: v.Args["timestamp_key"].(string), TimestampFormat: strings.ToLower(v.Args["timestamp_format"].(string))}
+
+			fmt.Printf("Sinkconfig %v\n", sinks[v.Id])
 
 			// Create goroutine to flush to the sink
 			go flushNode(sinks[v.Id])
@@ -58,21 +67,26 @@ func initSinksFromTaskGraph(sinks map[uuid.UUID]*SinkConfig, taskGraph []OpTask,
 // sinkBatch adds events to a sink buffer and flushes if needed
 func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*SinkConfig) {
 
-	// These are temp variables that will be user specified
-	var timeField string = "time"     //"published"  // the path to the timestamp
-	var layout string = time.RFC3339  // pattern of the timestamp
-	var prefixPat string = `%Y/%m/%d` // prefix pattern
-
-	// Strftime formatter
-	prefixFormatter, err := strftime.New(prefixPat, strftime.WithUnixSeconds('s'))
-
-	if err != nil {
-		log.Logger.Fatal(err.Error())
-	}
-
 	// Identify sinkConfig
 	sinkConfig := sinks[c.SinkId]
 	eventList := c.EventList
+
+	timeField := sinkConfig.TimestampKey
+	prefixPat := sinkConfig.FilenamePrefix
+	var layout string
+
+	switch sinkConfig.TimestampFormat {
+	case "rfc3339":
+		layout = time.RFC3339
+	default:
+		layout = time.RFC3339
+	}
+
+	// Strftime formatter
+	prefixFormatter, err := strftime.New(prefixPat, strftime.WithUnixSeconds('s'))
+	if err != nil {
+		log.Logger.Fatal(err.Error())
+	}
 
 	// For each event, distribute to correct buffer by using strftime to determine prefix
 	for _, event := range eventList {
@@ -90,8 +104,6 @@ func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*SinkConfig) {
 		if !found {
 			sinkBuffer = createSinkBuffer(sinkConfig, prefix) //&SinkBuffer{LastFlush: time.Now()}
 			sinkConfig.Prefix[prefix] = sinkBuffer
-			//go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
-			//	capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
 		}
 
 		// Append to selected buffer
@@ -191,34 +203,18 @@ func flushSinkBuffer(sinkConfig *SinkConfig, prefix string, sinkBuffer *SinkBuff
 	// Delete buffer
 	sinkBuffer = nil
 	delete(sinkConfig.Prefix, prefix)
-	//sinkConfig.Prefix[prefix] = nil
 
-	fmt.Printf("Delete sinkbuffer for %v\n", prefix)
-
-	/*
-		// Reset buffer
-		sinkBuffer.BufferList = []string{}
-		sinkBuffer.Size = 0
-		sinkBuffer.LastFlush = time.Now()
-
-		go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
-			capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
-	*/
+	//fmt.Printf("Delete sinkbuffer for %v\n", prefix)
 }
 
 func createSinkBuffer(sinkConfig *SinkConfig, prefix string) *SinkBuffer {
-	fmt.Printf("createSinkBuffer for %v\n", prefix)
+	//fmt.Printf("createSinkBuffer for %v\n", prefix)
 
 	sinkBuffer := &SinkBuffer{
 		BufferList: []string{},
 		Size:       0,
 		LastFlush:  time.Now(),
 	}
-
-	// Reset buffer
-	//sinkBuffer.BufferList = []string{}
-	//sinkBuffer.Size = 0
-	//sinkBuffer.LastFlush = time.Now()
 
 	go startSinkTimer(sinkConfig.BatchMaxTime, sinkConfig.TimeChan,
 		capsule.SinkTimerCapsule{SinkId: sinkConfig.Id, Prefix: prefix, LastFlush: sinkBuffer.LastFlush})
