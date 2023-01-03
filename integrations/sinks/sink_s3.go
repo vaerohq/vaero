@@ -2,6 +2,7 @@ package sinks
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -43,6 +44,9 @@ func (s *S3Sink) Flush(filename string, prefix string, eventList []string) {
 
 	// Create content
 	content := strings.Join(eventList, "\n")
+
+	// Full path
+	filename = filepath.Join(prefix, filename)
 
 	// Store to S3
 	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{

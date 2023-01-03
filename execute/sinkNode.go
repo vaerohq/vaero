@@ -25,6 +25,17 @@ func initSinkNode(snks map[uuid.UUID]*sinks.SinkConfig /*sinkTargets []uuid.UUID
 func initSinksFromTaskGraph(snks map[uuid.UUID]*sinks.SinkConfig, taskGraph []OpTask, timeChan chan capsule.SinkTimerCapsule) {
 	for _, v := range taskGraph {
 		if v.Type == "sink" {
+			// Set timestamp format
+			var timestampFormat string
+			switch strings.ToLower(v.Args["timestamp_format"].(string)) {
+			case "rfc3339":
+				timestampFormat = time.RFC3339
+			case "unix":
+				timestampFormat = time.UnixDate
+			default:
+				timestampFormat = time.RFC3339
+			}
+
 			// Create configuration for a sink
 			snks[v.Id] = &sinks.SinkConfig{Id: v.Id, Type: v.Op, Prefix: make(map[string]*sinks.SinkBuffer),
 				FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen), TimeChan: timeChan,
@@ -32,7 +43,7 @@ func initSinksFromTaskGraph(snks map[uuid.UUID]*sinks.SinkConfig, taskGraph []Op
 				Bucket:         v.Args["bucket"].(string),
 				FilenamePrefix: v.Args["filename_prefix"].(string), FilenameFormat: v.Args["filename_format"].(string),
 				Region:       v.Args["region"].(string),
-				TimestampKey: v.Args["timestamp_key"].(string), TimestampFormat: strings.ToLower(v.Args["timestamp_format"].(string))}
+				TimestampKey: v.Args["timestamp_key"].(string), TimestampFormat: timestampFormat}
 
 			fmt.Printf("Sinkconfig %v\n", snks[v.Id])
 
@@ -55,14 +66,7 @@ func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*sinks.SinkConfig) {
 
 	timeField := sinkConfig.TimestampKey
 	prefixPat := sinkConfig.FilenamePrefix
-	var layout string
-
-	switch sinkConfig.TimestampFormat {
-	case "rfc3339":
-		layout = time.RFC3339
-	default:
-		layout = time.RFC3339
-	}
+	layout := sinkConfig.TimestampFormat
 
 	// Strftime formatter
 	prefixFormatter, err := strftime.New(prefixPat, strftime.WithUnixSeconds('s'))
@@ -184,14 +188,7 @@ func flushSinkBuffer(sinkConfig *sinks.SinkConfig, prefix string, sinkBuffer *si
 	if err != nil {
 		log.Logger.Error("Could not create stfrtime formatter for flushing sink", zap.String("msg", err.Error()))
 	}
-
-	var layout string
-	switch sinkConfig.TimestampFormat {
-	case "rfc3339":
-		layout = time.RFC3339
-	default:
-		layout = time.RFC3339
-	}
+	layout := sinkConfig.TimestampFormat
 
 	var filename string
 	if len(sinkBuffer.BufferList) > 0 {
