@@ -47,64 +47,71 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) 
 	}
 
 	sourceConfig := initSourceConfig(&taskGraph[0])
-	source, err := identifySource(sourceConfig.SourceTask)
+	source, err := createSource(sourceConfig.SourceTask, srcOut)
 
 	if err != nil {
 		log.Logger.Error("Failed to identify source", zap.String("Error", err.Error()))
 	}
 
 	defer func() {
+		source.CleanUp()
 		close(srcOut)
 		log.Logger.Info("Closing sourceNode")
 	}()
 
-	// main loop
-	//count := 0 // temp
-	for {
-		select {
-		case _ = <-done:
-			return
+	if source.Type() == "pull" {
+		// main loop
+		//count := 0 // temp
+		for {
+			select {
+			case _ = <-done:
+				return
 
-		default:
-			// Refresh secrets if needed
-			if len(sourceConfig.SourceTask.Secret) != 0 &&
-				time.Now().Sub(sourceConfig.LastSecretsRefresh) > sourceConfig.SecretsCacheTime {
-				newSecrets, err := getSecrets(sourceConfig.SourceTask.Secret)
-				if err != nil {
-					log.Logger.Error("Error refreshing secrets", zap.String("Error", err.Error()))
-				} else {
-					log.Logger.Info("Refreshed secrets")
-					applySecrets(sourceConfig.SourceTask, newSecrets)
-					source = updateSource(source, sourceConfig.SourceTask)
+			default:
+				// Refresh secrets if needed
+				if len(sourceConfig.SourceTask.Secret) != 0 &&
+					time.Now().Sub(sourceConfig.LastSecretsRefresh) > sourceConfig.SecretsCacheTime {
+					newSecrets, err := getSecrets(sourceConfig.SourceTask.Secret)
+					if err != nil {
+						log.Logger.Error("Error refreshing secrets", zap.String("Error", err.Error()))
+					} else {
+						log.Logger.Info("Refreshed secrets")
+						applySecrets(sourceConfig.SourceTask, newSecrets)
+						source = updateSource(source, sourceConfig.SourceTask)
+					}
+					sourceConfig.LastSecretsRefresh = time.Now()
 				}
-				sourceConfig.LastSecretsRefresh = time.Now()
-			}
 
-			// Read from source
-			sourceConfig.LastExecution = time.Now()
-			capsule := capsule.Capsule{EventList: source.Read()} // read from source, and create capsule
-			srcOut <- capsule                                    // send capsule to transformNode
-			// capsule and eventList unsafe to access after sending
+				// Read from source
+				sourceConfig.LastExecution = time.Now()
+				capsule := capsule.Capsule{EventList: source.Read()} // read from source, and create capsule
+				srcOut <- capsule                                    // send capsule to transformNode
+				// capsule and eventList unsafe to access after sending
 
-			// Delay for interval
-			delta := sourceConfig.Interval - time.Now().Sub(sourceConfig.LastExecution)
-			if delta > 0 {
-				fmt.Printf("Delay for %v\n", delta)
-				time.Sleep(delta)
-			}
-
-			// TEMP
-			//time.Sleep(time.Second * 4)
-
-			/*
-				if count%2 == 0 {
-					time.Sleep(time.Second * 0)
-				} else {
-					time.Sleep(time.Second * 3)
+				// Delay for interval
+				delta := sourceConfig.Interval - time.Now().Sub(sourceConfig.LastExecution)
+				if delta > 0 {
+					fmt.Printf("Delay for %v\n", delta)
+					time.Sleep(delta)
 				}
-				count++
-			*/
+
+				// TEMP
+				//time.Sleep(time.Second * 4)
+
+				/*
+					if count%2 == 0 {
+						time.Sleep(time.Second * 0)
+					} else {
+						time.Sleep(time.Second * 3)
+					}
+					count++
+				*/
+			}
 		}
+	} else if source.Type() == "push" {
+		source.Read()
+
+		<-done // wait for done signal
 	}
 }
 

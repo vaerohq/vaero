@@ -6,9 +6,10 @@ import (
 )
 
 type RandomSource struct {
-	//Count int
+	Name string
 }
 
+// Read returns an event list
 func (source *RandomSource) Read() []string {
 	eventList := []string{
 		fmt.Sprintf(`{"hostname" : "Alderaan", "t" : true, "f" : false, "msg" : "Toto, I've got a feeling we're not in Kansas anymore", "severity" : "info", "time" : "%s"}`, time.Now().Format(time.RFC3339)),
@@ -21,4 +22,13 @@ func (source *RandomSource) Read() []string {
 		fmt.Sprintf(`{"hostname" : "Hoth", "t" : true, "f" : false, "msg" : "Every time a bell rings an angel gets his wings", "severity" : "info", "time" : "%s"}`, time.Now().Format(time.RFC3339)),
 	}
 	return eventList
+}
+
+// Type returns either "pull" or "push"
+func (source *RandomSource) Type() string {
+	return "pull"
+}
+
+func (source *RandomSource) CleanUp() {
+
 }

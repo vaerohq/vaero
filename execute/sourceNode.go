@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tidwall/gjson"
+	"github.com/vaerohq/vaero/capsule"
 	"github.com/vaerohq/vaero/integrations/sources"
 	"github.com/vaerohq/vaero/log"
 	"go.uber.org/zap"
@@ -47,12 +48,18 @@ func initSourceConfig(sourceTask *OpTask) SourceConfig {
 	return sourceConfig
 }
 
-func identifySource(sourceTask *OpTask) (sources.Source, error) {
+func createSource(sourceTask *OpTask, srcOut chan capsule.Capsule) (sources.Source, error) {
 	var source sources.Source
 
 	switch sourceTask.Op {
-	case "random":
-		source = &sources.RandomSource{}
+	case "http_server":
+		source = &sources.HTTPServerSource{
+			Endpoint:     sourceTask.Args["endpoint"].(string),
+			EventBreaker: sourceTask.Args["event_breaker"].(string),
+			Name:         sourceTask.Args["name"].(string),
+			Port:         int(sourceTask.Args["port"].(float64)),
+			SrcOut:       srcOut,
+		}
 	case "okta":
 		source = &sources.OktaSource{
 			Interval:             int(sourceTask.Args["interval"].(float64)),
@@ -62,6 +69,10 @@ func identifySource(sourceTask *OpTask) (sources.Source, error) {
 			Max_calls_per_period: int(sourceTask.Args["max_calls_per_period"].(float64)),
 			Limit_period:         int(sourceTask.Args["limit_period"].(float64)),
 			Max_retries:          int(sourceTask.Args["max_retries"].(float64)),
+		}
+	case "random":
+		source = &sources.RandomSource{
+			Name: sourceTask.Args["name"].(string),
 		}
 	default:
 		log.Logger.Error("Source not found", zap.String("Source", sourceTask.Op))
@@ -75,8 +86,6 @@ func updateSource(source sources.Source, task *OpTask) sources.Source {
 	var updatedSource sources.Source
 
 	switch task.Op {
-	case "random":
-		// nothing to update
 	case "okta":
 		updatedSource = &sources.OktaSource{
 			Interval:             int(task.Args["interval"].(float64)),
@@ -87,6 +96,8 @@ func updateSource(source sources.Source, task *OpTask) sources.Source {
 			Limit_period:         int(task.Args["limit_period"].(float64)),
 			Max_retries:          int(task.Args["max_retries"].(float64)),
 		}
+	case "random":
+		// nothing to update
 	default:
 		log.Logger.Error("Source not found", zap.String("Source", task.Op))
 	}
