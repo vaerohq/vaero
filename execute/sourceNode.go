@@ -16,6 +16,8 @@ import (
 
 type SourceConfig struct {
 	SourceTask         *OpTask
+	Interval           time.Duration
+	LastExecution      time.Time
 	LastSecretsRefresh time.Time
 	SecretsCacheTime   time.Duration
 	SecretsTimeout     time.Duration
@@ -24,7 +26,13 @@ type SourceConfig struct {
 func initSourceConfig(sourceTask *OpTask) SourceConfig {
 	sourceConfig := SourceConfig{SourceTask: sourceTask}
 
-	val, ok := sourceTask.Secret["cache_time_seconds"]
+	val, ok := sourceTask.Args["interval"]
+
+	if ok {
+		sourceConfig.Interval = time.Duration(val.(float64)) * time.Second
+	}
+
+	val, ok = sourceTask.Secret["cache_time_seconds"]
 	if ok {
 		sourceConfig.SecretsCacheTime = time.Duration(val.(float64)) * time.Second
 	}

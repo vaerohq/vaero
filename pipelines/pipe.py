@@ -2,7 +2,7 @@ from vaero_stream import Vaero
 
 vs = Vaero()
 
-result = vs.source("random", 5) \
+result = vs.source("random", 3) \
         .add("newfield", 42)
 
 result2 = result.delete("severity") \
