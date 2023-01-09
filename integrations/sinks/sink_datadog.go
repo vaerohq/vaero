@@ -22,6 +22,6 @@ func (s *DatadogSink) Flush(filename string, prefix string, eventList []string) 
 	 * Replace here
 	 */
 
-	log.Logger.Info("Flush to Datadog", zap.String("prefix", prefix))
+	log.Logger.Info("Flush to Datadog", zap.String("Prefix", prefix))
 	fmt.Printf("%v\n", strings.Join(eventList, "\n"))
 }

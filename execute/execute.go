@@ -1,7 +1,6 @@
 package execute
 
 import (
-	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -37,15 +36,21 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) 
 
 	// check the first task of the task graph to identify the source
 	if len(taskGraph) <= 0 {
-		log.Logger.Fatal("Task graph is empty")
+		log.Logger.Error("Task graph is empty")
+		return
 	}
 
 	if taskGraph[0].Type != "source" {
-		log.Logger.Fatal("Task graph does not start with a source")
+		log.Logger.Error("Task graph does not start with a source")
+		return
 	}
 
 	sourceConfig := initSourceConfig(&taskGraph[0])
-	source := identifySource(sourceConfig.SourceTask)
+	source, err := identifySource(sourceConfig.SourceTask)
+
+	if err != nil {
+		log.Logger.Error("Failed to identify source", zap.String("Error", err.Error()))
+	}
 
 	defer func() {
 		close(srcOut)
@@ -64,10 +69,14 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) 
 			// Refresh secrets if needed
 			if len(sourceConfig.SourceTask.Secret) != 0 &&
 				time.Now().Sub(sourceConfig.LastSecretsRefresh) > sourceConfig.SecretsCacheTime {
-				log.Logger.Info("Refreshed secrets")
-				newSecrets := getSecrets(sourceConfig.SourceTask.Secret)
-				applySecrets(sourceConfig.SourceTask, newSecrets)
-				source = updateSource(source, sourceConfig.SourceTask)
+				newSecrets, err := getSecrets(sourceConfig.SourceTask.Secret)
+				if err != nil {
+					log.Logger.Error("Error refreshing secrets", zap.String("Error", err.Error()))
+				} else {
+					log.Logger.Info("Refreshed secrets")
+					applySecrets(sourceConfig.SourceTask, newSecrets)
+					source = updateSource(source, sourceConfig.SourceTask)
+				}
 				sourceConfig.LastSecretsRefresh = time.Now()
 			}
 
@@ -105,8 +114,6 @@ func transformNode(srcOut chan capsule.Capsule, tnOut chan capsule.Capsule, task
 		if !ok {
 			return
 		}
-
-		fmt.Printf("TransformNode received: %v\n", event.EventList)
 
 		// Perform transformations
 		transformProcess(event.EventList, taskGraph, tnOut)

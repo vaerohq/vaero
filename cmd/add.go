@@ -4,9 +4,8 @@ Copyright © 2022 NAME HERE <EMAIL ADDRESS>
 package cmd
 
 import (
-	"log"
-
 	"github.com/spf13/cobra"
+	"github.com/vaerohq/vaero/log"
 )
 
 // addCmd represents the add command
@@ -17,7 +16,7 @@ var addCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
-			log.Fatal()
+			log.Logger.Fatal("Requires 1 argument")
 		}
 		c.AddHandler(args[0])
 	},

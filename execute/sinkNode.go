@@ -1,7 +1,6 @@
 package execute
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -45,7 +44,7 @@ func initSinksFromTaskGraph(snks map[uuid.UUID]*sinks.SinkConfig, taskGraph []Op
 				Region:       v.Args["region"].(string),
 				TimestampKey: v.Args["timestamp_key"].(string), TimestampFormat: timestampFormat}
 
-			fmt.Printf("Sinkconfig %v\n", snks[v.Id])
+			//fmt.Printf("Sinkconfig %v\n", snks[v.Id])
 
 			// Create goroutine to flush to the sink
 			go flushNode(snks[v.Id])
@@ -71,7 +70,8 @@ func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*sinks.SinkConfig) {
 	// Strftime formatter
 	prefixFormatter, err := strftime.New(prefixPat, strftime.WithUnixSeconds('s'))
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Failed to initialize strftime", zap.String("Error", err.Error()))
+		return
 	}
 
 	// For each event, distribute to correct buffer by using strftime to determine prefix
@@ -81,7 +81,8 @@ func sinkBatch(c *capsule.Capsule, sinks map[uuid.UUID]*sinks.SinkConfig) {
 		timeString := gjson.Get(event, timeField)
 		timestamp, err := time.Parse(layout, timeString.String())
 		if err != nil {
-			log.Logger.Fatal(err.Error())
+			log.Logger.Error("Failed to parse timestamp", zap.String("Error", err.Error()))
+			continue
 		}
 		prefix := prefixFormatter.FormatString(timestamp)
 
@@ -146,6 +147,7 @@ func flushNode(sinkConfig *sinks.SinkConfig) {
 		s = &sinks.SplunkSink{}
 	default:
 		log.Logger.Error("Unknown sink", zap.String("sink", sinkConfig.Type))
+		return
 	}
 
 	// Initialize sink
@@ -186,7 +188,8 @@ func flushSinkBuffer(sinkConfig *sinks.SinkConfig, prefix string, sinkBuffer *si
 	// Generate filename
 	filenameFormatter, err := strftime.New(sinkConfig.FilenameFormat, strftime.WithUnixSeconds('s'))
 	if err != nil {
-		log.Logger.Error("Could not create stfrtime formatter for flushing sink", zap.String("msg", err.Error()))
+		log.Logger.Error("Could not create stfrtime formatter for flushing sink", zap.String("Error", err.Error()))
+		return
 	}
 	layout := sinkConfig.TimestampFormat
 
@@ -198,10 +201,12 @@ func flushSinkBuffer(sinkConfig *sinks.SinkConfig, prefix string, sinkBuffer *si
 		timeString := gjson.Get(lastEvent, sinkConfig.TimestampKey)
 		timestamp, err := time.Parse(layout, timeString.String())
 		if err != nil {
-			log.Logger.Error("Error accessing the timestamp", zap.String("timestamp_key", sinkConfig.TimestampKey),
-				zap.String("msg", err.Error()))
+			log.Logger.Error("Could not parse timestamp", zap.String("Timestamp_key", sinkConfig.TimestampKey),
+				zap.String("Error", err.Error()))
+			filename = uuid.New().String()
+		} else {
+			filename = filenameFormatter.FormatString(timestamp)
 		}
-		filename = filenameFormatter.FormatString(timestamp)
 	} else {
 		filename = uuid.New().String()
 	}

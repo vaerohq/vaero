@@ -18,6 +18,6 @@ func (s *StdoutSink) Init(sinkConfig *SinkConfig) {
 
 // Flush writes data out to the sink immediately
 func (s *StdoutSink) Flush(filename string, prefix string, eventList []string) {
-	log.Logger.Info("Flush to Stdout", zap.String("prefix", prefix))
+	log.Logger.Info("Flush to Stdout", zap.String("Prefix", prefix))
 	fmt.Printf("%v\n", strings.Join(eventList, "\n"))
 }

@@ -4,6 +4,7 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"github.com/vaerohq/vaero/log"
+	"go.uber.org/zap"
 )
 
 // Rename function renames a field from path to newPath
@@ -16,13 +17,13 @@ func Rename(json string, path string, newPath string) string {
 	result, err = sjson.Set(json, newPath, value.Value())
 
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Rename transform failed (set)", zap.String("Error", err.Error()))
 	}
 
 	result, err = sjson.Delete(result, path)
 
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Rename transform failed (delete)", zap.String("Error", err.Error()))
 	}
 
 	return result

@@ -20,7 +20,7 @@ func transformProcess(eventList []string, taskGraph []OpTask, tnOut chan capsule
 			case "rename":
 				eventList = transform.RenameAll(eventList, v.Args["path"].(string), v.Args["new_path"].(string))
 			default:
-				log.Logger.Warn("Unknown op")
+				log.Logger.Error("Unknown op")
 			}
 		} else if v.Type == "branch" { // Branch
 
@@ -43,15 +43,6 @@ func transformProcess(eventList []string, taskGraph []OpTask, tnOut chan capsule
 			// Perform transforms
 			for idx, branch := range v.Branches {
 				transformProcess(copyList[idx], branch, tnOut)
-				// Use the eventList if this is the first branch
-				/*
-					if idx == 0 {
-						transformProcess(eventList, branch, tnOut)
-					} else {
-						// Operate on a copy
-						transformProcess(copyList[idx], branch, tnOut)
-					}
-				*/
 			}
 		} else if v.Type == "sink" { // When reach a sink, transmit to the sinkNode with the sinkId as a tag
 

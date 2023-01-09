@@ -136,13 +136,22 @@ func (c *ControlDB) AddHandler(specName string) {
 	stmt, err := c.db.Prepare(sqlStmt)
 	defer stmt.Close()
 
-	_, err = stmt.Exec(10, taskGraphStr, specName, "staged", 1)
+	// Read interval
+	interval := gjson.Get(taskGraphStr, "0.args.interval").Int() // Interval is stored in the first task, which is the source
+	status := "staged"
+	alive := 1
+
+	_, err = stmt.Exec(interval, taskGraphStr, specName, status, alive)
 	if err != nil {
 		log.Logger.Fatal("Could not add pipeline to database", zap.String("Error", err.Error()))
 	}
 
 	// output
-	fmt.Printf("Added pipeline from %s \nTask graph: %s", specName, taskGraphStr)
+	fmt.Printf("Added pipeline from %s \n", specName)
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+	fmt.Fprintf(w, "Interval\tTask Graph\tFile\tStatus\tAlive\n")
+	fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%d\n", interval, taskGraphStr, specName, status, alive)
+	w.Flush()
 }
 
 // convertToModuleName converts a file path to be usable with python -m flag
@@ -263,7 +272,7 @@ func (c *ControlDB) StartHandler() {
 		var spec, status, taskGraphStr string
 		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
 		if err != nil {
-			log.Logger.Fatal("Failed to scan database row", zap.String("Error", err.Error()))
+			log.Logger.Error("Failed to scan database row", zap.String("Error", err.Error()))
 		}
 		if status == "staged" {
 			log.Logger.Info("Start new run",
@@ -298,7 +307,7 @@ func (c *ControlDB) StartHandler() {
 	}
 	err = rows.Err()
 	if err != nil {
-		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
+		log.Logger.Error("Failed to read database query results", zap.String("Error", err.Error()))
 	}
 
 	// WAIT
@@ -330,7 +339,7 @@ func genTaskGraph(taskGraphStr string) []execute.OpTask {
 
 	taskGraph := genTaskGraphHelper(jsonGraph)
 
-	fmt.Printf("Task graph %v", taskGraph)
+	//fmt.Printf("Task graph %v", taskGraph)
 
 	return taskGraph
 }

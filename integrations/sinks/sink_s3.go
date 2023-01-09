@@ -36,7 +36,7 @@ func (s *S3Sink) Flush(filename string, prefix string, eventList []string) {
 		sdkConfig, err = config.LoadDefaultConfig(context.TODO())
 	}
 	if err != nil {
-		log.Logger.Error("Could not load AWS credentials", zap.String("msg", err.Error()))
+		log.Logger.Error("Could not load AWS credentials", zap.String("Error", err.Error()))
 		return
 	}
 
@@ -55,6 +55,6 @@ func (s *S3Sink) Flush(filename string, prefix string, eventList []string) {
 		Body:   strings.NewReader(content),
 	})
 	if err != nil {
-		log.Logger.Error("Could not upload file to S3", zap.String("msg", err.Error()))
+		log.Logger.Error("Could not upload file to S3", zap.String("Error", err.Error()))
 	}
 }

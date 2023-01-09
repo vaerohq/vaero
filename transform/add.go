@@ -3,6 +3,7 @@ package transform
 import (
 	"github.com/tidwall/sjson"
 	"github.com/vaerohq/vaero/log"
+	"go.uber.org/zap"
 )
 
 // Add function adds value at path in json
@@ -10,7 +11,7 @@ func Add(json string, path string, val interface{}) string {
 	result, err := sjson.Set(json, path, val)
 
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Add transform failed", zap.String("Error", err.Error()))
 	}
 
 	return result

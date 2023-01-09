@@ -8,6 +8,7 @@ import (
 
 	"github.com/vaerohq/vaero/log"
 	"github.com/vaerohq/vaero/settings"
+	"go.uber.org/zap"
 )
 
 // PythonSourceRead executes python_source_driver.py with the specified source as a parameter to
@@ -33,7 +34,8 @@ func PythonSourceRead(sourceName string, interval int, host string, token string
 	rawOut, err := cmd.Output()
 
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Error executing python source driver", zap.String("Error", err.Error()))
+		return []string{}
 	}
 
 	//fmt.Printf("RAW OUTPUT: %v", string(rawOut)) // DEBUG

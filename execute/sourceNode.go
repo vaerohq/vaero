@@ -2,7 +2,7 @@ package execute
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os/exec"
@@ -34,12 +34,12 @@ func initSourceConfig(sourceTask *OpTask) SourceConfig {
 		sourceConfig.SecretsTimeout = time.Duration(val.(float64)) * time.Second
 	}
 
-	fmt.Printf("sourceConfig %v\n", sourceConfig)
+	//fmt.Printf("sourceConfig %v\n", sourceConfig)
 
 	return sourceConfig
 }
 
-func identifySource(sourceTask *OpTask) sources.Source {
+func identifySource(sourceTask *OpTask) (sources.Source, error) {
 	var source sources.Source
 
 	switch sourceTask.Op {
@@ -56,10 +56,11 @@ func identifySource(sourceTask *OpTask) sources.Source {
 			Max_retries:          int(sourceTask.Args["max_retries"].(float64)),
 		}
 	default:
-		log.Logger.Fatal("Source not found", zap.String("source", sourceTask.Op))
+		log.Logger.Error("Source not found", zap.String("Source", sourceTask.Op))
+		return nil, errors.New("Source not found")
 	}
 
-	return source
+	return source, nil
 }
 
 func updateSource(source sources.Source, task *OpTask) sources.Source {
@@ -79,38 +80,42 @@ func updateSource(source sources.Source, task *OpTask) sources.Source {
 			Max_retries:          int(task.Args["max_retries"].(float64)),
 		}
 	default:
-		log.Logger.Fatal("Source not found", zap.String("source", task.Op))
+		log.Logger.Error("Source not found", zap.String("Source", task.Op))
 	}
 
 	return updatedSource
 }
 
 // getSecrets runs the command to retrieve secrets and returns the json parsed output from the command as a map
-func getSecrets(secret map[string]interface{}) map[string]interface{} {
+func getSecrets(secret map[string]interface{}) (map[string]interface{}, error) {
 	// Generate command
 	cmd := exec.Command(secret["command"].(string))
 
 	// Connect stdin and stdout
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Error opening stdin pipe", zap.String("Error", err.Error()))
+		return make(map[string]interface{}), errors.New("Error opening stdin pipe")
 	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Error opening stdout pipe", zap.String("Error", err.Error()))
+		return make(map[string]interface{}), errors.New("Error opening stdout pipe")
 	}
 	defer stdout.Close()
 
 	// Execute the command
 	if err := cmd.Start(); err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Error executing secrets script", zap.String("Error", err.Error()))
+		return make(map[string]interface{}), errors.New("Error executing secrets script")
 	}
 
 	// Write to stdin
 	jsonSecrets, err := json.Marshal(secret["secrets"])
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Error writing to stdin pipe", zap.String("Error", err.Error()))
+		return make(map[string]interface{}), errors.New("Error writing to stdin pipe")
 	}
 	io.WriteString(stdin, string(jsonSecrets))
 	stdin.Close()
@@ -118,12 +123,14 @@ func getSecrets(secret map[string]interface{}) map[string]interface{} {
 	// Read stdout of the command
 	buf, err := ioutil.ReadAll(stdout)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Error reading stdout pipe", zap.String("Error", err.Error()))
+		return make(map[string]interface{}), errors.New("Error reading stdout pipe")
 	}
 
 	// Wait for the command to complete
 	if err := cmd.Wait(); err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Error("Error waiting for secrets script", zap.String("Error", err.Error()))
+		return make(map[string]interface{}), errors.New("Error waiting for secrets script")
 	}
 
 	//fmt.Printf("Retrieved secrets %v\n", string(buf))
@@ -131,7 +138,7 @@ func getSecrets(secret map[string]interface{}) map[string]interface{} {
 	// Parse in format {"arg1" : value1, "arg2" : value2}
 	secretsMap := gjson.Parse(string(buf)).Value().(map[string]interface{})
 
-	return secretsMap
+	return secretsMap, nil
 }
 
 // applySecrets adds the new secrets as arguments to the source task
