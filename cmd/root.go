@@ -13,13 +13,12 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "vaero",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Vaero collects, transforms, and routes your log data",
+	Long: `Vaero is a modern log shipper that lets you specify your log pipelines in Python. Pipelines are executed in Go. This application is a command line interface for Vaero.
+To get started, add a pipeline file and then start:
+vaero add pipelines/pipe.py
+vaero start
+`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		log.InitLogger()
 		c.InitTables()

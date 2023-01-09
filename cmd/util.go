@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"text/tabwriter"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -69,27 +70,27 @@ func (c *ControlDB) InitTables() {
 			err = os.Mkdir("data", 0755) // r, x by all, w by owner
 
 			if err != nil {
-				log.Logger.Fatal(err.Error())
+				log.Logger.Fatal("Failed to create data directory", zap.String("Error", err.Error()))
 			}
 		} else {
-			log.Logger.Fatal(err.Error())
+			log.Logger.Fatal("Failed to access data directory", zap.String("Error", err.Error()))
 		}
 	}
 
 	// Open DB file. Creates file if it doesn't exist.
 	c.db, err = sql.Open("sqlite3", "./data/vaero.db")
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Failed to open database", zap.String("Error", err.Error()))
 	}
 
 	sqlStmt := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (id INTEGER NOT NULL PRIMARY KEY, interval INTEGER,
-			task_graph TEXT, spec TEXT, status TEXT CHECK( status IN ("staged", "running") ), alive INTEGER);
+			task_graph TEXT, spec TEXT, status TEXT CHECK( status IN ("stopped", "staged", "running") ), alive INTEGER);
 		`, jobsTable)
 
 	_, err = c.db.Exec(sqlStmt)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Create table failed", zap.String("Error", err.Error()))
 	}
 }
 
@@ -101,7 +102,7 @@ func (c *ControlDB) AddHandler(specName string) {
 		if os.IsNotExist(err) {
 			log.Logger.Fatal("File not found", zap.String("Filename", specName))
 		} else {
-			log.Logger.Fatal(err.Error())
+			log.Logger.Fatal("Could not open file", zap.String("Error", err.Error()))
 		}
 	}
 
@@ -122,12 +123,11 @@ func (c *ControlDB) AddHandler(specName string) {
 	output, err := cmd.Output()
 
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Could not run Python pipeline specification", zap.String("Error", err.Error()))
 	}
 	taskGraphStr := string(output)
-	log.Logger.Info("Generated task graph", zap.String("task graph", taskGraphStr))
 
-	// Add back later
+	// Add to pipelines database
 	sqlStmt := fmt.Sprintf(`
 		INSERT INTO %s (interval, task_graph, spec, status, alive)
 		values(?, ?, ?, ?, ?)
@@ -138,8 +138,11 @@ func (c *ControlDB) AddHandler(specName string) {
 
 	_, err = stmt.Exec(10, taskGraphStr, specName, "staged", 1)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Could not add pipeline to database", zap.String("Error", err.Error()))
 	}
+
+	// output
+	fmt.Printf("Added pipeline from %s \nTask graph: %s", specName, taskGraphStr)
 }
 
 // convertToModuleName converts a file path to be usable with python -m flag
@@ -167,79 +170,100 @@ func (c *ControlDB) DeleteHandler(id int) {
 
 	_, err = stmt.Exec(id)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Could not delete pipeline from database", zap.String("Error", err.Error()))
 	}
+
+	// output
+	fmt.Printf("Deleted pipeline %d\n", id)
 }
 
 // DetailHandler displays the details of the job with id. If not found, it displays a not found message.
 func (c *ControlDB) DetailHandler(id int) {
+	// Query
 	sqlStmt := fmt.Sprintf(`
 		SELECT * FROM %s WHERE id = %d
 		`, jobsTable, id)
 
 	rows, err := c.db.Query(sqlStmt)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
 	}
 	defer rows.Close()
+
+	// Iterate on results and display
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+	fmt.Fprintf(w, "Id\tInterval\tTask Graph\tFile\tStatus\tAlive\n")
 	for rows.Next() {
-		var id, interval, task_graph, alive int
-		var spec, status string
-		err = rows.Scan(&id, &interval, &task_graph, &spec, &status, &alive)
+		var id, interval, alive int
+		var spec, status, taskGraphStr string
+		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
 		if err != nil {
-			log.Logger.Fatal(err.Error())
+			log.Logger.Fatal("Failed to scan database row", zap.String("Error", err.Error()))
 		}
-		fmt.Printf("%d %d %d %s %s %d\n", id, interval, task_graph, spec, status, alive)
+		//fmt.Printf("%d %d %d %s %s %d\n", id, interval, task_graph, spec, status, alive)
+		fmt.Fprintf(w, "%d\t%d\t%s\t%s\t%s\t%d\n", id, interval, taskGraphStr, spec, status, alive)
 	}
+	w.Flush()
 	err = rows.Err()
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
 	}
 }
 
 // ListHandler lists all jobs
 func (c *ControlDB) ListHandler() {
+	// Query
 	sqlStmt := fmt.Sprintf(`
 		SELECT * FROM %s
 		`, jobsTable)
-
 	rows, err := c.db.Query(sqlStmt)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
 	}
 	defer rows.Close()
+
+	// Iterate on results and display
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+	fmt.Fprintf(w, "Id\tInterval\tTask Graph\tFile\tStatus\tAlive\n")
 	for rows.Next() {
 		var id, interval, alive int
 		var spec, status, taskGraphStr string
 		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
 		if err != nil {
-			log.Logger.Fatal(err.Error())
+			log.Logger.Fatal("Failed to scan database row", zap.String("Error", err.Error()))
 		}
-		fmt.Printf("%d %d %s %s %s %d\n", id, interval, taskGraphStr, spec, status, alive)
+		//fmt.Printf("%d %d %s %s %s %d\n", id, interval, taskGraphStr, spec, status, alive)
+		fmt.Fprintf(w, "%d\t%d\t%s\t%s\t%s\t%d\n", id, interval, taskGraphStr, spec, status, alive)
 	}
+	w.Flush()
 	err = rows.Err()
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
 	}
 }
 
 // StartHandler starts all jobs that are staged
 func (c *ControlDB) StartHandler() {
+	// Query
 	sqlStmt := fmt.Sprintf(`
 		SELECT * FROM %s
 		`, jobsTable)
 
 	rows, err := c.db.Query(sqlStmt)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
 	}
 	defer rows.Close()
+
+	fmt.Println("Starting log pipelines")
+
+	// Iterate on results
 	for rows.Next() {
 		var id, interval, alive int
 		var spec, status, taskGraphStr string
 		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
 		if err != nil {
-			log.Logger.Fatal(err.Error())
+			log.Logger.Fatal("Failed to scan database row", zap.String("Error", err.Error()))
 		}
 		if status == "staged" {
 			log.Logger.Info("Start new run",
@@ -267,14 +291,14 @@ func (c *ControlDB) StartHandler() {
 
 				_, err = stmt.Exec(id)
 				if err != nil {
-					log.Logger.Fatal(err.Error())
+					log.Logger.Fatal("Update row failed", zap.String("Error", err.Error()))
 				}
 			}(id)
 		}
 	}
 	err = rows.Err()
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
 	}
 
 	// WAIT
@@ -285,16 +309,19 @@ func (c *ControlDB) StartHandler() {
 // StopHandler stops the job with id by setting alive to 0. If not found, do nothing.
 func (c *ControlDB) StopHandler(id int) {
 	sqlStmt := fmt.Sprintf(`
-		UPDATE %s SET alive = ? WHERE id = ?
+		UPDATE %s SET status = ?, alive = ? WHERE id = ?
 		`, jobsTable)
 
 	stmt, err := c.db.Prepare(sqlStmt)
 	defer stmt.Close()
 
-	_, err = stmt.Exec(0, id)
+	_, err = stmt.Exec("stopped", 0, id)
 	if err != nil {
-		log.Logger.Fatal(err.Error())
+		log.Logger.Fatal("Update row failed", zap.String("Error", err.Error()))
 	}
+
+	// output
+	fmt.Printf("Stopped pipeline %d\n", id)
 }
 
 // genTaskGraph generates a task graph of OpTasks from a taskGraphStr

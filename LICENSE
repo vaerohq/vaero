@@ -42,5 +42,3 @@ The *licensor* is the entity offering these terms, and the *software* is the sof
 *use* means anything you do with the software requiring one of your licenses.
 
 *trademark* means trademarks, service marks, and similar rights.
-
-------------------------------------------------------------------------------------
