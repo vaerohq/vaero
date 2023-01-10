@@ -90,6 +90,32 @@ func CheckPython() {
 	}
 
 	log.Logger.Info("Python found", zap.String("Version", string(output)))
+
+	// Check for all required Python packages
+	CheckPythonPackage("tomli")
+}
+
+// CheckPythonPackage checks if the specified Python package is installed
+func CheckPythonPackage(pkg string) bool {
+	// Run python
+	importString := fmt.Sprintf("import %s", pkg)
+	cmd := exec.Command("python", "-c", importString)
+
+	// Activate virtual environment if selected
+	if settings.Config.PythonVenv != "" {
+		cmd.Path = filepath.Join(settings.Config.PythonVenv, "python")
+	}
+
+	// Run command
+	_, err := cmd.Output()
+
+	if err != nil {
+		errorString := fmt.Sprintf("Required Python package %s not found. Please install with pip install.", pkg)
+		log.Logger.Fatal(errorString, zap.String("Package", pkg))
+		return false
+	}
+
+	return true
 }
 
 // InitTables creates Vaero's DB tables if they do not exist
