@@ -37,7 +37,7 @@ func initSinksFromTaskGraph(snks map[uuid.UUID]*sinks.SinkConfig, taskGraph []Op
 
 			// Create configuration for a sink
 			snks[v.Id] = &sinks.SinkConfig{Id: v.Id, Type: v.Op, Prefix: make(map[string]*sinks.SinkBuffer),
-				FlushChan: make(chan capsule.Capsule, settings.DefChanBufferLen), TimeChan: timeChan,
+				FlushChan: make(chan capsule.Capsule, settings.Config.DefaultChanBufferLen), TimeChan: timeChan,
 				BatchMaxBytes: int(v.Args["batch_max_bytes"].(float64)), BatchMaxTime: int(v.Args["batch_max_time"].(float64)),
 				Bucket:         v.Args["bucket"].(string),
 				FilenamePrefix: v.Args["filename_prefix"].(string), FilenameFormat: v.Args["filename_format"].(string),

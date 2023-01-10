@@ -10,6 +10,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"github.com/BurntSushi/toml"
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mitchellh/mapstructure"
@@ -31,6 +32,38 @@ var c ControlDB
 
 var executor execute.Executor
 
+// InitSettings initializes settings from config file
+func InitSettings() {
+	configFile := "vaero.cfg"
+
+	// Check that config file exists, otherwise create
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		log.Logger.Info("Creating config file")
+		newFile, err := os.Create(configFile)
+
+		if err != nil {
+			log.Logger.Fatal("Error creating config file", zap.String("Filename", configFile))
+		}
+		newFile.Close()
+
+	} else if err != nil {
+		log.Logger.Fatal("Error reading config file", zap.String("Filename", configFile))
+	}
+
+	// Set defaults
+	settings.Config = settings.GlobalConfig{
+		DefaultChanBufferLen: 1000,
+		PythonVenv:           "",
+	}
+
+	// Read into global settings
+	if _, err := toml.DecodeFile(configFile, &settings.Config); err != nil {
+		log.Logger.Fatal("Could not read config file", zap.String("Filename", configFile))
+	}
+
+	fmt.Printf("Settings %v\n", settings.Config)
+}
+
 // CheckPython checks if Python3 is installed
 func CheckPython() {
 
@@ -38,8 +71,8 @@ func CheckPython() {
 	cmd := exec.Command("python", "-V")
 
 	// Activate virtual environment if selected
-	if settings.PythonVenv != "" {
-		cmd.Path = filepath.Join(settings.PythonVenv, "python")
+	if settings.Config.PythonVenv != "" {
+		cmd.Path = filepath.Join(settings.Config.PythonVenv, "python")
 	}
 
 	// Run command
@@ -115,8 +148,8 @@ func (c *ControlDB) AddHandler(specName string) {
 	cmd := exec.Command("python", "-m", moduleName)
 
 	// Activate virtual environment if selected
-	if settings.PythonVenv != "" {
-		cmd.Path = filepath.Join(settings.PythonVenv, "python")
+	if settings.Config.PythonVenv != "" {
+		cmd.Path = filepath.Join(settings.Config.PythonVenv, "python")
 	}
 
 	// Run command

@@ -21,6 +21,7 @@ vaero start
 `,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		log.InitLogger()
+		InitSettings()
 		c.InitTables()
 		CheckPython()
 	},

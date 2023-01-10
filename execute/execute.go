@@ -1,7 +1,6 @@
 package execute
 
 import (
-	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -21,8 +20,8 @@ func (executor *Executor) RunJob(interval int, taskGraph []OpTask) {
 	log.Logger.Info("RunJob", zap.Int("interval", interval))
 
 	var done chan int = make(chan int)
-	var srcOut chan capsule.Capsule = make(chan capsule.Capsule, settings.DefChanBufferLen)
-	var tnOut chan capsule.Capsule = make(chan capsule.Capsule, settings.DefChanBufferLen)
+	var srcOut chan capsule.Capsule = make(chan capsule.Capsule, settings.Config.DefaultChanBufferLen)
+	var tnOut chan capsule.Capsule = make(chan capsule.Capsule, settings.Config.DefaultChanBufferLen)
 
 	go sourceNode(done, srcOut, taskGraph)
 	go transformNode(srcOut, tnOut, taskGraph)
@@ -91,7 +90,7 @@ func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) 
 				// Delay for interval
 				delta := sourceConfig.Interval - time.Now().Sub(sourceConfig.LastExecution)
 				if delta > 0 {
-					fmt.Printf("Delay for %v\n", delta)
+					//fmt.Printf("Delay for %v\n", delta)
 					time.Sleep(delta)
 				}
 
@@ -140,7 +139,7 @@ func sinkNode(tnOut chan capsule.Capsule, taskGraph []OpTask) {
 	var snks = make(map[uuid.UUID]*sinks.SinkConfig)
 
 	// channel for timers
-	timeChan := make(chan capsule.SinkTimerCapsule, settings.DefChanBufferLen)
+	timeChan := make(chan capsule.SinkTimerCapsule, settings.Config.DefaultChanBufferLen)
 
 	defer func() {
 		closeSinks(snks)

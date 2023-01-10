@@ -60,6 +60,7 @@ func (source *HTTPServerSource) httpHandler(w http.ResponseWriter, req *http.Req
 	}
 	bodyString := string(bodyBytes)
 
+	// Event break
 	var eventList []string
 	switch strings.ToLower(source.EventBreaker) {
 	case "jsonarray":
@@ -88,4 +89,5 @@ func (source *HTTPServerSource) httpHandler(w http.ResponseWriter, req *http.Req
 	// Send into pipeline
 	capsule := capsule.Capsule{EventList: eventList} // create capsule
 	source.SrcOut <- capsule                         // send capsule to transformNode
+	// capsule and eventList unsafe to access after sending
 }

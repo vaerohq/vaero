@@ -1,7 +1,12 @@
 package settings
 
-// DefChanBufferLen defines the default length of channel buffers. Each message on a channel
-// is a slice of events, so this is effectively the number of slices, not of individual events
-var DefChanBufferLen = 1000
+type GlobalConfig struct {
+	// DefaultChanBufferLen defines the default length of channel buffers. Each message on a channel
+	// is a slice of events, so this is effectively the number of slices, not of individual events
+	DefaultChanBufferLen int
 
-var PythonVenv = "/Users/bryantlee/Code/Vaero/vaero-go/venv-vaero/bin/"
+	// Path to the version of Python to use
+	PythonVenv string
+}
+
+var Config GlobalConfig
