@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/google/uuid"
@@ -32,6 +33,15 @@ var c ControlDB
 
 var executor execute.Executor
 
+type PipelineEntry struct {
+	Id           int
+	Interval     int
+	Alive        int
+	Spec         string
+	Status       string
+	TaskGraphStr string
+}
+
 // InitSettings initializes settings from config file
 func InitSettings() {
 	configFile := "vaero.cfg"
@@ -52,8 +62,9 @@ func InitSettings() {
 
 	// Set defaults
 	settings.Config = settings.GlobalConfig{
-		DefaultChanBufferLen: 1000,
-		PythonVenv:           "",
+		DefaultChanBufferLen:    1000,
+		PollPipelineChangesFreq: 1,
+		PythonVenv:              "",
 	}
 
 	// Read into global settings
@@ -144,7 +155,7 @@ func (c *ControlDB) InitTables() {
 
 	sqlStmt := fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS %s (id INTEGER NOT NULL PRIMARY KEY, interval INTEGER,
-			task_graph TEXT, spec TEXT, status TEXT CHECK( status IN ("stopped", "staged", "running") ), alive INTEGER);
+			task_graph TEXT, spec TEXT, status TEXT CHECK( status IN ("running", "staged", "stopped", "stopping") ), alive INTEGER);
 		`, jobsTable)
 
 	_, err = c.db.Exec(sqlStmt)
@@ -229,149 +240,71 @@ func convertToModuleName(specName string) string {
 
 // DeleteHandler deletes the job with id. If not found, do nothing.
 func (c *ControlDB) DeleteHandler(id int) {
-	sqlStmt := fmt.Sprintf(`
-		DELETE FROM %s WHERE id = ?
-		`, jobsTable)
 
-	stmt, err := c.db.Prepare(sqlStmt)
-	defer stmt.Close()
+	entry := c.selectFromJobsDB(id)
 
-	_, err = stmt.Exec(id)
-	if err != nil {
-		log.Logger.Fatal("Could not delete pipeline from database", zap.String("Error", err.Error()))
+	// Stop a pipeline if running, otherwise it will be orphaned when deleted
+	if entry.Status == "running" {
+		c.StopHandler(id)
 	}
 
-	// output
-	fmt.Printf("Deleted pipeline %d\n", id)
+	for {
+		time.Sleep(time.Second)
+
+		entry = c.selectFromJobsDB(id)
+
+		// Check if stopped
+		if entry.Status == "stopped" {
+
+			// Delete
+			sqlStmt := fmt.Sprintf(`
+			DELETE FROM %s WHERE id = ?
+			`, jobsTable)
+
+			stmt, err := c.db.Prepare(sqlStmt)
+			defer stmt.Close()
+
+			_, err = stmt.Exec(id)
+			if err != nil {
+				log.Logger.Error("Could not delete pipeline from database", zap.String("Error", err.Error()))
+			}
+
+			// output
+			fmt.Printf("Deleted pipeline %d\n", id)
+			break
+		}
+	}
 }
 
 // DetailHandler displays the details of the job with id. If not found, it displays a not found message.
 func (c *ControlDB) DetailHandler(id int) {
-	// Query
-	sqlStmt := fmt.Sprintf(`
-		SELECT * FROM %s WHERE id = %d
-		`, jobsTable, id)
 
-	rows, err := c.db.Query(sqlStmt)
-	if err != nil {
-		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
-	}
-	defer rows.Close()
+	entry := c.selectFromJobsDB(id)
 
-	// Iterate on results and display
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
-	fmt.Fprintf(w, "Id\tInterval\tTask Graph\tFile\tStatus\tAlive\n")
-	for rows.Next() {
-		var id, interval, alive int
-		var spec, status, taskGraphStr string
-		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
-		if err != nil {
-			log.Logger.Fatal("Failed to scan database row", zap.String("Error", err.Error()))
-		}
-		//fmt.Printf("%d %d %d %s %s %d\n", id, interval, task_graph, spec, status, alive)
-		fmt.Fprintf(w, "%d\t%d\t%s\t%s\t%s\t%d\n", id, interval, taskGraphStr, spec, status, alive)
-	}
-	w.Flush()
-	err = rows.Err()
-	if err != nil {
-		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
-	}
+	singleEntryArr := []PipelineEntry{entry}
+
+	printPipelineEntriesTable(singleEntryArr)
 }
 
 // ListHandler lists all jobs
 func (c *ControlDB) ListHandler() {
-	// Query
-	sqlStmt := fmt.Sprintf(`
-		SELECT * FROM %s
-		`, jobsTable)
-	rows, err := c.db.Query(sqlStmt)
-	if err != nil {
-		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
-	}
-	defer rows.Close()
 
-	// Iterate on results and display
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
-	fmt.Fprintf(w, "Id\tInterval\tTask Graph\tFile\tStatus\tAlive\n")
-	for rows.Next() {
-		var id, interval, alive int
-		var spec, status, taskGraphStr string
-		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
-		if err != nil {
-			log.Logger.Fatal("Failed to scan database row", zap.String("Error", err.Error()))
-		}
-		//fmt.Printf("%d %d %s %s %s %d\n", id, interval, taskGraphStr, spec, status, alive)
-		fmt.Fprintf(w, "%d\t%d\t%s\t%s\t%s\t%d\n", id, interval, taskGraphStr, spec, status, alive)
-	}
-	w.Flush()
-	err = rows.Err()
-	if err != nil {
-		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
-	}
+	pipelineEntries := c.selectAllFromJobsDB()
+
+	printPipelineEntriesTable(pipelineEntries)
 }
 
 // StartHandler starts all jobs that are staged
 func (c *ControlDB) StartHandler() {
-	// Query
-	sqlStmt := fmt.Sprintf(`
-		SELECT * FROM %s
-		`, jobsTable)
 
-	rows, err := c.db.Query(sqlStmt)
-	if err != nil {
-		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
-	}
-	defer rows.Close()
+	// Run admin routine to poll jobs table and update running pipelines
+	go adminRoutine(c)
 
-	fmt.Println("Starting log pipelines")
-
-	// Iterate on results
-	for rows.Next() {
-		var id, interval, alive int
-		var spec, status, taskGraphStr string
-		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
-		if err != nil {
-			log.Logger.Error("Failed to scan database row", zap.String("Error", err.Error()))
-		}
-		if status == "staged" {
-			log.Logger.Info("Start new run",
-				zap.Int("id", id),
-				zap.Int("interval", interval),
-				zap.String("taskGraph", taskGraphStr),
-				zap.String("spec", spec),
-				zap.String("status", status),
-				zap.Int("alive", alive),
-			)
-
-			taskGraph := genTaskGraph(taskGraphStr)
-
-			// Initiate run here
-			executor.RunJob(interval, taskGraph)
-
-			// Update status to running
-			defer func(id int) {
-				sqlStmt := fmt.Sprintf(`
-				UPDATE %s SET status = "running" WHERE id = ?
-				`, jobsTable)
-
-				stmt, err := c.db.Prepare(sqlStmt)
-				defer stmt.Close()
-
-				_, err = stmt.Exec(id)
-				if err != nil {
-					log.Logger.Fatal("Update row failed", zap.String("Error", err.Error()))
-				}
-			}(id)
-		}
-	}
-	err = rows.Err()
-	if err != nil {
-		log.Logger.Error("Failed to read database query results", zap.String("Error", err.Error()))
-	}
-
-	// WAIT
-	var input string
-	fmt.Scanln(&input)
+	// WAIT FOREVER (all goroutines will die when the main routine ends)
+	//var input string
+	//fmt.Scanln(&input)
+	exit := make(chan string)
+	<-exit
 }
 
 // StopHandler stops the job with id by setting alive to 0. If not found, do nothing.
@@ -383,13 +316,157 @@ func (c *ControlDB) StopHandler(id int) {
 	stmt, err := c.db.Prepare(sqlStmt)
 	defer stmt.Close()
 
-	_, err = stmt.Exec("stopped", 0, id)
+	_, err = stmt.Exec("stopping", 0, id)
 	if err != nil {
 		log.Logger.Fatal("Update row failed", zap.String("Error", err.Error()))
 	}
 
 	// output
-	fmt.Printf("Stopped pipeline %d\n", id)
+	fmt.Printf("Stopping pipeline %d\n", id)
+}
+
+// adminRoutine is a long running goroutine that regularly checks the jobs table for new, stopped, or deleted jobs
+// and applies those changes
+func adminRoutine(c *ControlDB) {
+	for {
+		entries := c.selectAllFromJobsDB()
+
+		for _, entry := range entries {
+			if entry.Status == "staged" {
+				/*
+					log.Logger.Info("Start new run",
+						zap.Int("id", entry.Id),
+						zap.Int("interval", entry.Interval),
+						zap.String("taskGraph", entry.TaskGraphStr),
+						zap.String("spec", entry.Spec),
+						zap.String("status", entry.Status),
+						zap.Int("alive", entry.Alive),
+					)
+				*/
+				fmt.Printf("Starting pipeline %d %d %s %s %s %d\n", entry.Id,
+					entry.Interval, entry.TaskGraphStr, entry.Spec, entry.Status, entry.Alive)
+
+				taskGraph := genTaskGraph(entry.TaskGraphStr)
+
+				// Initiate run here
+				executor.RunJob(entry.Id, entry.Interval, taskGraph)
+
+				c.updateJobStatus(entry.Id, "running")
+			} else if entry.Status == "stopping" {
+				// Stop job here
+				executor.StopJob(entry.Id)
+
+				c.updateJobStatus(entry.Id, "stopped")
+				fmt.Printf("Stopped pipeline %d\n", entry.Id)
+			}
+		}
+
+		// Poll frequency
+		time.Sleep(time.Duration(settings.Config.PollPipelineChangesFreq) * time.Second)
+	}
+}
+
+// printPipelineEntriesTable prints a table to display pipeline entries
+func printPipelineEntriesTable(entries []PipelineEntry) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 1, ' ', tabwriter.Debug)
+	fmt.Fprintf(w, "Id\tInterval\tTask Graph\tFile\tStatus\tAlive\n")
+	for _, entry := range entries {
+		fmt.Fprintf(w, "%d\t%d\t%s\t%s\t%s\t%d\n", entry.Id, entry.Interval, entry.TaskGraphStr, entry.Spec, entry.Status, entry.Alive)
+	}
+	w.Flush()
+}
+
+// selectFromJobsDB returns the results of selecting of the jobs table
+func (c *ControlDB) selectFromJobsDB(id int) PipelineEntry {
+	// Query
+	sqlStmt := fmt.Sprintf(`
+	SELECT * FROM %s WHERE id = %d
+	`, jobsTable, id)
+
+	rows, err := c.db.Query(sqlStmt)
+	if err != nil {
+		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
+	}
+	defer rows.Close()
+
+	// Iterate on results
+	var pipelineEntry PipelineEntry
+	for rows.Next() {
+		var id, interval, alive int
+		var spec, status, taskGraphStr string
+		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
+		if err != nil {
+			log.Logger.Error("Failed to scan database row", zap.String("Error", err.Error()))
+			continue
+		}
+		pipelineEntry = PipelineEntry{
+			Id:           id,
+			Interval:     interval,
+			TaskGraphStr: taskGraphStr,
+			Spec:         spec,
+			Status:       status,
+			Alive:        alive,
+		}
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
+	}
+	return pipelineEntry
+}
+
+// selectAllFromJobsDB returns the results of a select all query on the jobs table
+func (c *ControlDB) selectAllFromJobsDB() []PipelineEntry {
+	// Query
+	sqlStmt := fmt.Sprintf(`
+	SELECT * FROM %s
+	`, jobsTable)
+	rows, err := c.db.Query(sqlStmt)
+	if err != nil {
+		log.Logger.Fatal("Database query failed", zap.String("Error", err.Error()))
+	}
+	defer rows.Close()
+
+	// Iterate on results and display
+	pipelineEntries := []PipelineEntry{}
+	for rows.Next() {
+		var id, interval, alive int
+		var spec, status, taskGraphStr string
+		err = rows.Scan(&id, &interval, &taskGraphStr, &spec, &status, &alive)
+		if err != nil {
+			log.Logger.Error("Failed to scan database row", zap.String("Error", err.Error()))
+			continue
+		}
+		pipelineEntries = append(pipelineEntries, PipelineEntry{
+			Id:           id,
+			Interval:     interval,
+			TaskGraphStr: taskGraphStr,
+			Spec:         spec,
+			Status:       status,
+			Alive:        alive,
+		})
+	}
+	err = rows.Err()
+	if err != nil {
+		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
+	}
+
+	return pipelineEntries
+}
+
+// updateJobStatus updates the status of the specified job to the specified status
+func (c *ControlDB) updateJobStatus(id int, status string) {
+	sqlStmt := fmt.Sprintf(`
+	UPDATE %s SET status = ? WHERE id = ?
+	`, jobsTable)
+
+	stmt, err := c.db.Prepare(sqlStmt)
+	defer stmt.Close()
+
+	_, err = stmt.Exec(status, id)
+	if err != nil {
+		log.Logger.Error("Update row failed", zap.String("Error", err.Error()))
+	}
 }
 
 // genTaskGraph generates a task graph of OpTasks from a taskGraphStr

@@ -15,9 +15,22 @@ import (
 type Executor struct {
 }
 
+type ControlChannels struct {
+	Done chan int
+}
+
+var pipeControls map[int]ControlChannels = map[int]ControlChannels{}
+
+// StopJob stops a job by sending the done signal
+func (executor *Executor) StopJob(id int) {
+	log.Logger.Info("Stop Job", zap.Int("Id", id))
+
+	pipeControls[id].Done <- 1
+}
+
 // RunJob runs a job for the taskGraph. The job runs as a set of forever-running goroutines until stopped.
-func (executor *Executor) RunJob(interval int, taskGraph []OpTask) {
-	log.Logger.Info("RunJob", zap.Int("interval", interval))
+func (executor *Executor) RunJob(id int, interval int, taskGraph []OpTask) {
+	log.Logger.Info("Run Job", zap.Int("Id", id), zap.Int("Interval", interval))
 
 	var done chan int = make(chan int)
 	var srcOut chan capsule.Capsule = make(chan capsule.Capsule, settings.Config.DefaultChanBufferLen)
@@ -27,9 +40,7 @@ func (executor *Executor) RunJob(interval int, taskGraph []OpTask) {
 	go transformNode(srcOut, tnOut, taskGraph)
 	go sinkNode(tnOut, taskGraph)
 
-	// Test killing all goroutines
-	time.Sleep(time.Second * 15)
-	done <- 1
+	pipeControls[id] = ControlChannels{Done: done}
 }
 
 func sourceNode(done chan int, srcOut chan capsule.Capsule, taskGraph []OpTask) {
