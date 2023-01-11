@@ -72,7 +72,7 @@ func InitSettings() {
 		log.Logger.Fatal("Could not read config file", zap.String("Filename", configFile))
 	}
 
-	fmt.Printf("Settings %v\n", settings.Config)
+	//fmt.Printf("Settings %v\n", settings.Config)
 }
 
 // CheckPython checks if Python3 is installed
@@ -241,7 +241,12 @@ func convertToModuleName(specName string) string {
 // DeleteHandler deletes the job with id. If not found, do nothing.
 func (c *ControlDB) DeleteHandler(id int) {
 
-	entry := c.selectFromJobsDB(id)
+	entry, ok := c.selectFromJobsDB(id)
+
+	if !ok {
+		fmt.Printf("Pipeline %d not found\n", id)
+		return
+	}
 
 	// Stop a pipeline if running, otherwise it will be orphaned when deleted
 	if entry.Status == "running" {
@@ -251,7 +256,7 @@ func (c *ControlDB) DeleteHandler(id int) {
 	for {
 		time.Sleep(time.Second)
 
-		entry = c.selectFromJobsDB(id)
+		entry, ok = c.selectFromJobsDB(id)
 
 		// Check if stopped
 		if entry.Status == "stopped" {
@@ -272,6 +277,8 @@ func (c *ControlDB) DeleteHandler(id int) {
 			// output
 			fmt.Printf("Deleted pipeline %d\n", id)
 			break
+		} else if !ok { // Error if job is not found
+			break
 		}
 	}
 }
@@ -279,7 +286,12 @@ func (c *ControlDB) DeleteHandler(id int) {
 // DetailHandler displays the details of the job with id. If not found, it displays a not found message.
 func (c *ControlDB) DetailHandler(id int) {
 
-	entry := c.selectFromJobsDB(id)
+	entry, ok := c.selectFromJobsDB(id)
+
+	if !ok {
+		fmt.Printf("Pipeline %d not found\n", id)
+		return
+	}
 
 	singleEntryArr := []PipelineEntry{entry}
 
@@ -309,6 +321,15 @@ func (c *ControlDB) StartHandler() {
 
 // StopHandler stops the job with id by setting alive to 0. If not found, do nothing.
 func (c *ControlDB) StopHandler(id int) {
+	// Check if job exists
+	_, ok := c.selectFromJobsDB(id)
+
+	if !ok {
+		fmt.Printf("Pipeline %d not found\n", id)
+		return
+	}
+
+	// Stop job
 	sqlStmt := fmt.Sprintf(`
 		UPDATE %s SET status = ?, alive = ? WHERE id = ?
 		`, jobsTable)
@@ -377,7 +398,7 @@ func printPipelineEntriesTable(entries []PipelineEntry) {
 }
 
 // selectFromJobsDB returns the results of selecting of the jobs table
-func (c *ControlDB) selectFromJobsDB(id int) PipelineEntry {
+func (c *ControlDB) selectFromJobsDB(id int) (PipelineEntry, bool) {
 	// Query
 	sqlStmt := fmt.Sprintf(`
 	SELECT * FROM %s WHERE id = %d
@@ -391,6 +412,7 @@ func (c *ControlDB) selectFromJobsDB(id int) PipelineEntry {
 
 	// Iterate on results
 	var pipelineEntry PipelineEntry
+	ok := false
 	for rows.Next() {
 		var id, interval, alive int
 		var spec, status, taskGraphStr string
@@ -407,12 +429,13 @@ func (c *ControlDB) selectFromJobsDB(id int) PipelineEntry {
 			Status:       status,
 			Alive:        alive,
 		}
+		ok = true
 	}
 	err = rows.Err()
 	if err != nil {
 		log.Logger.Fatal("Failed to read database query results", zap.String("Error", err.Error()))
 	}
-	return pipelineEntry
+	return pipelineEntry, ok
 }
 
 // selectAllFromJobsDB returns the results of a select all query on the jobs table
