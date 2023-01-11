@@ -1,0 +1,9 @@
+backoff==2.2.1
+boto3==1.26.41
+botocore==1.29.41
+LinkHeader==0.4.3
+PyJWT==2.6.0
+python_dateutil==2.8.2
+pytz==2022.7
+requests==2.28.1
+tomli==2.0.1
