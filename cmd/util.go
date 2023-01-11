@@ -63,16 +63,25 @@ func InitSettings() {
 	// Set defaults
 	settings.Config = settings.GlobalConfig{
 		DefaultChanBufferLen:    1000,
+		LogLevel:                "Info",
 		PollPipelineChangesFreq: 1,
 		PythonVenv:              "",
 	}
 
-	// Read into global settings
+	// Read config file into global settings
 	if _, err := toml.DecodeFile(configFile, &settings.Config); err != nil {
 		log.Logger.Fatal("Could not read config file", zap.String("Filename", configFile))
 	}
 
-	//fmt.Printf("Settings %v\n", settings.Config)
+	// Set log level
+	switch strings.ToLower(settings.Config.LogLevel) {
+	case "error":
+		log.LogLevel.SetLevel(zap.ErrorLevel)
+	case "info":
+		log.LogLevel.SetLevel(zap.InfoLevel)
+	case "warn":
+		log.LogLevel.SetLevel(zap.WarnLevel)
+	}
 }
 
 // CheckPython checks if Python3 is installed
@@ -254,12 +263,10 @@ func (c *ControlDB) DeleteHandler(id int) {
 	}
 
 	for {
-		time.Sleep(time.Second)
-
 		entry, ok = c.selectFromJobsDB(id)
 
 		// Check if stopped
-		if entry.Status == "stopped" {
+		if entry.Status == "stopped" || entry.Status == "staged" {
 
 			// Delete
 			sqlStmt := fmt.Sprintf(`
@@ -280,6 +287,8 @@ func (c *ControlDB) DeleteHandler(id int) {
 		} else if !ok { // Error if job is not found
 			break
 		}
+
+		time.Sleep(time.Second)
 	}
 }
 

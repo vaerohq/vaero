@@ -7,15 +7,19 @@ import (
 )
 
 var Logger *zap.Logger
+var LogLevel zap.AtomicLevel
 
 // InitLogger initializes a zap logger and should be called on program start
 func InitLogger() {
 	var err error
-	Logger, err = zap.NewDevelopment() // development logger
+	logConfig := zap.NewDevelopmentConfig()
+	//logConfig.Level.SetLevel(zap.ErrorLevel)
+	LogLevel = logConfig.Level
+
+	Logger, err = logConfig.Build() // development logger
 	if err != nil {
 		log.Fatalf("can't initialize zap logger: %v", err)
 	}
-	Logger.Info("Initialized logger")
 }
 
 // SyncLogger syncs the logger by flushing any buffered logs
