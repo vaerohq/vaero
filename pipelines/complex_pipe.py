@@ -1,4 +1,4 @@
-from vaero_stream import Vaero
+from vaero.stream import Vaero
 
 vs = Vaero()
 
