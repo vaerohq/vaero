@@ -12,8 +12,8 @@ type GlobalConfig struct {
 	// in the jobs table
 	PollPipelineChangesFreq int
 
-	// Path to the version of Python to use
-	PythonVenv string
+	// Path to the folder containing the version of Python to use
+	PythonPath string
 }
 
 var Config GlobalConfig

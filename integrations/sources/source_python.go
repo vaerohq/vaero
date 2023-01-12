@@ -26,8 +26,8 @@ func PythonSourceRead(sourceName string, interval int, host string, token string
 		"--max_retries", strconv.Itoa(max_retries))
 
 	// Activate virtual environment if selected
-	if settings.Config.PythonVenv != "" {
-		cmd.Path = filepath.Join(settings.Config.PythonVenv, "python")
+	if settings.Config.PythonPath != "" {
+		cmd.Path = filepath.Join(settings.Config.PythonPath, "python")
 	}
 
 	// Run command

@@ -65,7 +65,7 @@ func InitSettings() {
 		DefaultChanBufferLen:    1000,
 		LogLevel:                "Info",
 		PollPipelineChangesFreq: 1,
-		PythonVenv:              "",
+		PythonPath:              "",
 	}
 
 	// Read config file into global settings
@@ -91,8 +91,8 @@ func CheckPython() {
 	cmd := exec.Command("python", "-V")
 
 	// Activate virtual environment if selected
-	if settings.Config.PythonVenv != "" {
-		cmd.Path = filepath.Join(settings.Config.PythonVenv, "python")
+	if settings.Config.PythonPath != "" {
+		cmd.Path = filepath.Join(settings.Config.PythonPath, "python")
 	}
 
 	// Run command
@@ -122,8 +122,8 @@ func CheckPythonPackage(pkg string) bool {
 	cmd := exec.Command("python", "-c", importString)
 
 	// Activate virtual environment if selected
-	if settings.Config.PythonVenv != "" {
-		cmd.Path = filepath.Join(settings.Config.PythonVenv, "python")
+	if settings.Config.PythonPath != "" {
+		cmd.Path = filepath.Join(settings.Config.PythonPath, "python")
 	}
 
 	// Run command
@@ -194,8 +194,8 @@ func (c *ControlDB) AddHandler(specName string) {
 	cmd := exec.Command("python", "-m", moduleName)
 
 	// Activate virtual environment if selected
-	if settings.Config.PythonVenv != "" {
-		cmd.Path = filepath.Join(settings.Config.PythonVenv, "python")
+	if settings.Config.PythonPath != "" {
+		cmd.Path = filepath.Join(settings.Config.PythonPath, "python")
 	}
 
 	// Run command
