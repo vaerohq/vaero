@@ -10,7 +10,7 @@ import (
 
 // addCmd represents the add command
 var addCmd = &cobra.Command{
-	Use:   "add [path to file]",
+	Use:   "add [file path]",
 	Short: "Add a pipeline to Vaero based on the specified pipeline file",
 	Long:  `Add a pipeline to Vaero by reading the specified pipeline file. The pipeline is staged until the start command is received.`,
 	Args:  cobra.ExactArgs(1),
