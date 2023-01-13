@@ -1,3 +1,6 @@
+#
+# Copyright © 2023 Vaero Inc. (https://www.vaero.co/)
+#
 import time
 
 def rate_limit(increment: float, last_call: float) -> float:

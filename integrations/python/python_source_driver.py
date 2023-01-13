@@ -1,3 +1,6 @@
+#
+# Copyright © 2023 Vaero Inc. (https://www.vaero.co/)
+#
 import getopt, json, sys
 from integrations.python.source_okta import OktaSource
 

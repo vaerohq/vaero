@@ -1,3 +1,6 @@
+#
+# Copyright © 2023 Vaero Inc. (https://www.vaero.co/)
+#
 from vaero_cdk.http_connector import HTTPConnector, APICursor
 
 from typing import Any, Iterable, Mapping, MutableMapping, Optional

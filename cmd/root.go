@@ -1,5 +1,5 @@
 /*
-Copyright © 2022 Vaero hello@vaero.co
+Copyright © 2023 Vaero Inc. (https://www.vaero.co/)
 */
 package cmd
 

@@ -1,3 +1,6 @@
+#
+# Copyright © 2023 Vaero Inc. (https://www.vaero.co/)
+#
 from __future__ import annotations # enable using class type in the class
 import json
 import tomli

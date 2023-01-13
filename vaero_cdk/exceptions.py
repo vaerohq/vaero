@@ -1,3 +1,6 @@
+#
+# Copyright © 2023 Vaero Inc. (https://www.vaero.co/)
+#
 import requests
 
 class BackoffException(requests.exceptions.HTTPError):

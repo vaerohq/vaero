@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+#
+# Copyright © 2023 Vaero Inc. (https://www.vaero.co/)
+#
 import boto3
 from botocore.exceptions import ClientError
 import json
