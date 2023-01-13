@@ -37,7 +37,6 @@ Vaero's Python syntax is modern and easy to use. Log pipelines are executed with
 ## [Documentation][docs.intro]
 
 ### Getting Started
-- [**What is Vaero?**][docs.intro]
 - [**Installation**][docs.install]
 - [**Quickstart**][docs.quickstart]
 
@@ -61,6 +60,9 @@ Vaero's Python syntax is modern and easy to use. Log pipelines are executed with
 
 ### Configuration
 - [**Global Settings**][docs.global_settings]
+
+---
+Built and supported by [Vaero][vaero.home]
 
 [docs.cli]:https://docs.vaero.co/docs/cli
 [docs.deployment]: https://docs.vaero.co/docs/deploying-vaero
@@ -86,3 +88,4 @@ Vaero's Python syntax is modern and easy to use. Log pipelines are executed with
 [docs.sinks]: https://docs.vaero.co/docs/sinks
 [docs.sinks.s3]: https://docs.vaero.co/docs/s3
 [docs.sinks.stdout]: https://docs.vaero.co/docs/stdout
+[vaero.home]: https://www.vaero.co
