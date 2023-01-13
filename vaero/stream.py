@@ -13,7 +13,7 @@ class Vaero():
     def __init__(self, ptr: Mapping[str, Any] = None):
         self._ptr = ptr # self._ptr is a pointer to the node at the current place of this instance
 
-    def source(self, source_type: str, interval: int = 0, host: str = "",
+    def source(self, source_type: str, interval: int = 10, host: str = "",
                 token: str = "", name: str = "", max_calls_per_period: int = 60, limit_period : int = 60,
                 max_retries: int = 6, endpoint: str = "/logevent", port: int = 8080, event_breaker: str = "jsonarray") -> Vaero:
 
