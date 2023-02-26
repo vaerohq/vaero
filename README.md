@@ -1,4 +1,12 @@
-# Vaero
+<div align="center">
+
+<h1 align="center">
+  <img width="600" src="docs/images/logo-no-background.svg" alt="Vaero Logo">
+</h1>
+
+[![Go](https://img.shields.io/badge/built%20with-go-lightblue)](https://go.dev/) [![Contributions](https://img.shields.io/badge/contributions-welcome-orange)](https://github.com/vaerohq/vaero/issues)
+
+</div>
 
 View the [documentation][docs.intro] and [quickstart][docs.quickstart] guide online for usage information.
 
