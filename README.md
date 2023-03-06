@@ -10,6 +10,8 @@
 
 View the [documentation][docs.intro] and [quickstart][docs.quickstart] guide online for usage information.
 
+[Join the Community][docs.community]
+
 ## What is Vaero?
 
 Vaero is a _programmable_ high-performance data pipeline for log data. Collect, transform, and route your log data from any log source to any destination. Vaero helps you save on log storage costs, send data to different systems of analysis, normalize data to different formats, enrich data with more information, and control logs from all your vendors in one place.
@@ -69,10 +71,14 @@ Vaero's Python syntax is modern and easy to use. Log pipelines are executed with
 ### Configuration
 - [**Global Settings**][docs.global_settings]
 
+### Community
+- [**Discord**][docs.community]
+
 ---
 Built and supported by [Vaero][vaero.home]
 
 [docs.cli]:https://docs.vaero.co/docs/cli
+[docs.community]: https://discord.gg/GwxpVyx68X
 [docs.deployment]: https://docs.vaero.co/docs/deploying-vaero
 [docs.examples]: https://docs.vaero.co/docs/examples
 [docs.global_settings]: https://docs.vaero.co/docs/global-settings
