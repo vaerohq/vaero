@@ -57,6 +57,11 @@ class Vaero():
         node = {"type" : "tn", "op" :"filter_regexp", "args" : {"path" : path, "regex" : regexp}}
 
         return self._addToTaskGraph(node)
+    
+    def mask(self, path: str, regexp: str, replace_expr: str) -> Vaero:
+        node = {"type" : "tn", "op" :"mask", "args" : {"path" : path, "regex" : regexp, "replace_expr" : replace_expr}}
+
+        return self._addToTaskGraph(node)
 
     def rename(self, path: str, new_path: str) -> Vaero:
         node = {"type" : "tn", "op" : "rename", "args" : {"path" : path, "new_path" : new_path}}

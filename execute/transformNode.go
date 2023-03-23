@@ -22,6 +22,8 @@ func transformProcess(eventList []string, taskGraph []OpTask, tnOut chan capsule
 				eventList = transform.DeleteAll(eventList, v.Args["path"].(string))
 			case "filter_regexp":
 				eventList = transform.FilterRegExpAll(eventList, v.Args["path"].(string), v.Args["regex"].(string))
+			case "mask":
+				eventList = transform.MaskAll(eventList, v.Args["path"].(string), v.Args["regex"].(string), v.Args["replace_expr"].(string))
 			case "rename":
 				eventList = transform.RenameAll(eventList, v.Args["path"].(string), v.Args["new_path"].(string))
 			default:
