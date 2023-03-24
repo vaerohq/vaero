@@ -77,6 +77,12 @@ func createSource(sourceTask *OpTask, srcOut chan capsule.Capsule) (sources.Sour
 		source = &sources.RandomSource{
 			Name: sourceTask.Args["name"].(string),
 		}
+	case "s3":
+		source = &sources.S3Source{
+			Bucket: sourceTask.Args["bucket"].(string),
+			Prefix: sourceTask.Args["prefix"].(string),
+			Region: sourceTask.Args["region"].(string),
+		}
 	default:
 		log.Logger.Error("Source not found", zap.String("Source", sourceTask.Op))
 		return nil, errors.New("Source not found")
@@ -101,6 +107,12 @@ func updateSource(source sources.Source, task *OpTask) sources.Source {
 		}
 	case "random":
 		// nothing to update
+	case "s3":
+		source = &sources.S3Source{
+			Bucket: task.Args["bucket"].(string),
+			Prefix: task.Args["prefix"].(string),
+			Region: task.Args["region"].(string),
+		}
 	default:
 		log.Logger.Error("Source not found", zap.String("Source", task.Op))
 	}

@@ -18,7 +18,8 @@ class Vaero():
 
     def source(self, source_type: str, interval: int = 10, host: str = "",
                 token: str = "", name: str = "", max_calls_per_period: int = 60, limit_period : int = 60,
-                max_retries: int = 6, endpoint: str = "/logevent", port: int = 8080, event_breaker: str = "jsonarray") -> Vaero:
+                max_retries: int = 6, endpoint: str = "/logevent", port: int = 8080, event_breaker: str = "jsonarray",
+                bucket: str = "", prefix: str = "", region: str = "") -> Vaero:
 
         if not endpoint.startswith("/"):
             endpoint = "/" + endpoint
@@ -27,7 +28,7 @@ class Vaero():
                 "args" : {"interval" : interval, "host" : host, "token" : token, "name" : name,
                 "max_calls_per_period" : max_calls_per_period, "limit_period" : limit_period,
                 "max_retries" : max_retries, "endpoint" : endpoint, "port" : port,
-                "event_breaker" : event_breaker}}
+                "event_breaker" : event_breaker, "bucket" : bucket, "prefix" : prefix, "region" : region}}
 
         return self._addToTaskGraph(node)
     
