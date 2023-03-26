@@ -64,6 +64,11 @@ class Vaero():
 
         return self._addToTaskGraph(node)
 
+    def parse_regexp(self, path: str, regexp: str) -> Vaero:
+        node = {"type" : "tn", "op" :"parse_regexp", "args" : {"path" : path, "regex" : regexp}}
+
+        return self._addToTaskGraph(node)
+
     def rename(self, path: str, new_path: str) -> Vaero:
         node = {"type" : "tn", "op" : "rename", "args" : {"path" : path, "new_path" : new_path}}
 
