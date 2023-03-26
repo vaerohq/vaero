@@ -73,6 +73,11 @@ class Vaero():
         node = {"type" : "tn", "op" : "rename", "args" : {"path" : path, "new_path" : new_path}}
 
         return self._addToTaskGraph(node)
+    
+    def select(self, path: str) -> Vaero:
+        node = {"type" : "tn", "op" : "select", "args" : {"path" : path}}
+
+        return self._addToTaskGraph(node)
 
     # Apply any option to the node. Options are set in the args map.
     def option(self, arg_name: str, value: Any) -> Vaero:

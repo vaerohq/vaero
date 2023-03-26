@@ -28,6 +28,8 @@ func transformProcess(eventList []string, taskGraph []OpTask, tnOut chan capsule
 				eventList = transform.ParseRegExpAll(eventList, v.Args["path"].(string), v.Args["regex"].(string))
 			case "rename":
 				eventList = transform.RenameAll(eventList, v.Args["path"].(string), v.Args["new_path"].(string))
+			case "select":
+				eventList = transform.SelectAll(eventList, v.Args["path"].(string))
 			default:
 				log.Logger.Error("Unknown op")
 			}
