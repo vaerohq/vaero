@@ -17,6 +17,8 @@ type ConnectorConfig struct {
 	arn 	   string
 	shardID	   string
 	kinesisAllShards bool
+	consumerName string
+	kinesisDoListen bool
 }
 
 // initialize a new Connector Config
@@ -31,6 +33,7 @@ func (cc *ConnectorConfig) Service(service string) *ConnectorConfig {
 }
 
 // set the name
+// please make this safe for the filesystem (no ., .., etc)
 func (cc *ConnectorConfig) Name(name string) *ConnectorConfig {
 	cc.name = name
 	return cc
@@ -57,6 +60,18 @@ func (cc *ConnectorConfig) ShardID(shardID string) *ConnectorConfig {
 // set all shards
 func (cc *ConnectorConfig) KinesisAllShards(value bool) *ConnectorConfig {
 	cc.kinesisAllShards = value
+	return cc
+}
+
+// get a consumer name for kinesis
+func (cc *ConnectorConfig) ConsumerName(value string) *ConnectorConfig {
+	cc.consumerName = value
+	return cc
+}
+
+// for kinesis: choose to poll or listen
+func (cc *ConnectorConfig) KinesisDoListen(value bool) *ConnectorConfig {
+	cc.kinesisDoListen = value
 	return cc
 }
 
@@ -95,7 +110,8 @@ func (cc *ConnectorConfig) GetPublic() *ConnectorConfigPublic {
 		UserName: cc.userName,
 		Password: cc.password,
 		Token: cc.token,
-
+		ConsumerName: cc.consumerName,
+		KinesisDoListen: cc.kinesisDoListen,
 	}
 }
 
@@ -109,6 +125,8 @@ type ConnectorConfigPublic struct {
 	ARN 	   string
 	ShardID	   string
 	KinesisAllShards bool
+	ConsumerName string
+	KinesisDoListen bool
 
 	UserName string
 	Password   string	

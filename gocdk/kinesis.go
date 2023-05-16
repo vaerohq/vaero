@@ -1,5 +1,6 @@
 package gocdk
 
+import "fmt"
 import "log"
 
 import "context"
@@ -21,9 +22,9 @@ import (
  * 2. a push model (from AWS -> Vaero) using SubscribeToShard
  * see discussion https://docs.aws.amazon.com/streams/latest/dev/building-consumers.html
  *
- * This client implements either, and allows for listening to a specific shard or all of them
+ * This client implements both, allowing for polling 1 shard, polling all shards, or listening to 1 shard
  *
- * If you configure this to listen only to a specific shard, it is your responsibility to
+ * If you configure this to poll/slisten only to a specific shard, it is your responsibility to
  * configure listeners for all available shards.
  *
  */
@@ -34,14 +35,18 @@ type KinesisService struct {
 
 	cursor *LocalFileCursor
 
-	// config
+	// configuration, all Services
 	name string
-	
+
+	// configuration, AWS	
 	awsRegion string
 
+	// configuration, AWS service
 	arn string
 	shardID string
 	kinesisAllShards bool
+	kinesisDoListen bool
+	consumerName string
 	
 	// cursor
 	shardList []ShardInfo
@@ -60,10 +65,25 @@ func (ks *KinesisService) CheckValidConfig(cc *ConnectorConfig) bool {
 		log.Fatal("ERROR: config for ", pub.Service, " is not valid for kinesis")
 	}
 
-	if pub.ARN == "" || (!pub.KinesisAllShards && pub.ShardID == "") {
-		log.Fatal("ERROR: config for kinesis is missing arn or [shard id | all shards]")
+	if pub.KinesisDoListen {
+		if pub.KinesisAllShards {
+			log.Fatal("ERROR: config for kinesis specifies listening and all shards.  Please choose one.")
+		}
+		if pub.ShardID == "" {
+			log.Fatal("ERROR: config for kinesis is missing required shard id for listening")
+		}
+		if pub.ConsumerName == "" {
+			log.Fatal("ERROR: config for kinesis is missing required consumer name for listening")
+		}
+	
+	} else {
+		if pub.ARN == "" || (!pub.KinesisAllShards && pub.ShardID == "") {
+			log.Fatal("ERROR: config for kinesis is missing arn or [shard id | all shards]")
+		}
 	}
 
+	ks.kinesisDoListen = pub.KinesisDoListen
+	ks.consumerName = pub.ConsumerName
 	ks.kinesisAllShards = pub.KinesisAllShards
 	ks.shardID = pub.ShardID
 	ks.arn = pub.ARN
@@ -120,6 +140,7 @@ func (ks *KinesisService) Authorize() bool {
 	cfg, _ := config.LoadDefaultConfig(context.TODO())
 	cfg.Region = ks.awsRegion
 	ks.client = kinesis.NewFromConfig(cfg)
+
 	
 
 	// if we are reading all shards, enumerate them
@@ -164,12 +185,66 @@ func (ks *KinesisService) Authorize() bool {
 	return true
 }
 
+
+
+func (ks *KinesisService) ReadStreamListen(sink StreamSink) {
+	if !ks.doneInitialization {
+		log.Fatal("ERROR: ReadStreaming called before Authorize")
+	}
+	if !ks.kinesisDoListen {
+		log.Fatal("ERROR: ReadStreaming called when kinesisDoListen is false")
+	}
+
+	resp, err := ks.client.RegisterStreamConsumer(context.Background(), &kinesis.RegisterStreamConsumerInput{
+        StreamARN: aws.String(ks.arn),
+        ConsumerName: aws.String(ks.consumerName),
+    })
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("INFO", "consumerARN", resp.Consumer.ConsumerARN)
+
+	// NB: per https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/kinesis#Client.SubscribeToShard
+	//     subscriptions last 5 minutes
+	response, err := ks.client.SubscribeToShard(context.Background(), &kinesis.SubscribeToShardInput{
+		ConsumerARN: resp.Consumer.ConsumerARN,
+		ShardId:   aws.String(ks.shardID),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("INFO", response)
+
+	/*
+	listener := client.Records().Subscribe(context.Background(), func(r events.Record) {
+	for {
+		listener 
+	}
+*/
+	// elh TODO DeregisterStreamConsumer
+
+
+}
+
+
 // reads a stream then terminates when out of data
 func (ks *KinesisService) ReadStream(sink StreamSink) {
 	if (!ks.doneInitialization) {
 		log.Fatal("ERROR: ReadStream called before Authorize")
 	}
 	
+	if !ks.kinesisDoListen {
+		ks.ReadStreamPoll(sink)
+	} else {
+		ks.ReadStreamListen(sink)
+	}
+}
+
+
+// reads a stream via polling
+func (ks *KinesisService) ReadStreamPoll(sink StreamSink) {
 	iterator := kinesis.GetShardIteratorInput{
 		StreamARN: aws.String(ks.arn),
 	}
