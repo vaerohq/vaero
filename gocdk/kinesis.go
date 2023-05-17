@@ -130,6 +130,8 @@ type ShardInfo struct {
 	StartingSequenceNumber string
 
 	MaxSequencePresent bool
+
+	// elh todo turn this into a string and use string comparison only
 	EndingSequenceNumber uint64
 }
 
