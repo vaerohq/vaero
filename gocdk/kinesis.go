@@ -1,10 +1,11 @@
 package gocdk
 
-import "fmt"
-import "log"
-
-import "context"
-import "strconv"
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+)
 
 // for kinesis
 import (
@@ -12,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis"
 	"github.com/aws/aws-sdk-go-v2/service/kinesis/types"
-	
 )
 
 
@@ -48,9 +48,13 @@ type KinesisService struct {
 	kinesisDoListen bool
 	consumerName string
 	
-	// cursor
+	// cursor: polling
 	shardList []ShardInfo
 	cursorRestart bool
+
+	// cursor: streaming
+	consumerArn string
+	consumerSeqNo string
 
 	// initialization guard
 	doneInitialization bool
@@ -106,6 +110,13 @@ func (ks *KinesisService) LoadCursor(forceRestart bool) {
 	if !forceRestart && ks.cursor.CheckIfSavedCursorExists() {
 		ks.cursor.Deserialize()
 
+		if ks.kinesisDoListen {
+			ks.consumerArn = ks.cursor.GetString("consumerArn")
+			ks.consumerSeqNo = ks.cursor.GetString("consumerSeqNo")
+		} else {
+			ks.shardList = ks.cursor.Get("shardList").([]ShardInfo)
+		}
+
 	} else {
 		// default cursor values
 		ks.cursorRestart = true
@@ -118,9 +129,16 @@ func (ks *KinesisService) SaveCursor() {
 		ks.cursor = NewLocalFileCursor(ks.name + "_kinesis")
 	}
 
-	ks.cursor.Set("shardList", ks.shardList)
 	ks.cursor.RegisterType(ShardInfo{})
 	ks.cursor.RegisterType([]ShardInfo{})
+
+	if ks.kinesisDoListen {
+		ks.cursor.Set("consumerArn", ks.consumerArn)
+		ks.cursor.Set("consumerSeqNo", ks.consumerSeqNo)
+
+	} else {
+		ks.cursor.Set("shardList", ks.shardList)
+	}
 
 	ks.cursor.Serialize()
 }
@@ -131,8 +149,7 @@ type ShardInfo struct {
 
 	MaxSequencePresent bool
 
-	// elh todo turn this into a string and use string comparison only
-	EndingSequenceNumber uint64
+	EndingSequenceNumber string
 }
 
 
@@ -175,7 +192,7 @@ func (ks *KinesisService) Authorize() bool {
 		}
 
 		if  shard.SequenceNumberRange.EndingSequenceNumber != nil {
-			ks.shardList[i].EndingSequenceNumber, err = strconv.ParseUint(*shard.SequenceNumberRange.EndingSequenceNumber, 10, 64)
+			ks.shardList[i].EndingSequenceNumber = *shard.SequenceNumberRange.EndingSequenceNumber
 			ks.shardList[i].MaxSequencePresent = true
 			if err != nil {
 				log.Fatal(err)
@@ -187,66 +204,145 @@ func (ks *KinesisService) Authorize() bool {
 	return true
 }
 
-
-
-func (ks *KinesisService) ReadStreamListen(sink StreamSink) {
-	if !ks.doneInitialization {
-		log.Fatal("ERROR: ReadStreaming called before Authorize")
-	}
-	if !ks.kinesisDoListen {
-		log.Fatal("ERROR: ReadStreaming called when kinesisDoListen is false")
-	}
-
-	resp, err := ks.client.RegisterStreamConsumer(context.Background(), &kinesis.RegisterStreamConsumerInput{
-        StreamARN: aws.String(ks.arn),
-        ConsumerName: aws.String(ks.consumerName),
-    })
+// deregister the stream consumer
+func DeregisterStreamConsumer(client *kinesis.Client, arn string, consumerArn string) {
+	_, err := client.DeregisterStreamConsumer(context.Background(), &kinesis.DeregisterStreamConsumerInput{
+		ConsumerARN: aws.String(consumerArn),
+		StreamARN: aws.String(arn),
+	})
 	if err != nil {
-		log.Fatal(err)
+		log.Printf("WARN: error deregistering stream consumer service:kinesis arn:%s consumerarn:%s err:%v\n", arn, consumerArn, err)
 	}
+}
 
-	fmt.Println("INFO", "consumerARN", resp.Consumer.ConsumerARN)
-
-	// NB: per https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/kinesis#Client.SubscribeToShard
-	//     subscriptions last 5 minutes
-	response, err := ks.client.SubscribeToShard(context.Background(), &kinesis.SubscribeToShardInput{
-		ConsumerARN: resp.Consumer.ConsumerARN,
-		ShardId:   aws.String(ks.shardID),
+// utility function: if you forget a consumer ARN and have to discover it
+func (ks *KinesisService) DiscoverRegisteredConsumerARNs(){
+	resp, err := ks.client.ListStreamConsumers(context.Background(), &kinesis.ListStreamConsumersInput{
+		StreamARN: aws.String(ks.arn),
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("INFO", response)
-
-	/*
-	listener := client.Records().Subscribe(context.Background(), func(r events.Record) {
-	for {
-		listener 
+	fmt.Println("Discovering consumer arns:")
+	for _, consumer := range resp.Consumers {
+		fmt.Printf("discovered consumer consumerArn:%s consumerName:%s\n", *consumer.ConsumerARN, *consumer.ConsumerName)
 	}
-*/
-	// elh TODO DeregisterStreamConsumer
+}
+
+// kinesis reader using a stream listener
+func (ks *KinesisService) readStreamListen(sink StreamSink) {
+	// Steps:
+	// register a stream consumer; wait until the stream and the stream consumer are in the ACTIVE state
+	// subscribe to a shard (automatic duration: 5 minutes)
+	
+	
+	// to repair a consumer that was improperly left registered
+	/*
+	// ks.DiscoverRegisteredConsumerARNs()
+	oldarn := "arn:aws:kinesis:us-west-2:272331482377:stream/datastream0/consumer/vaero-consumer-0:1684389063"
+	fmt.Println("Deregistering consumer arns:")
+	DeregisterStreamConsumer(ks.client, ks.arn, oldarn)
+	*/
+	
+	if ks.consumerArn == "" {
+		resp, err := ks.client.RegisterStreamConsumer(context.Background(), &kinesis.RegisterStreamConsumerInput{
+			StreamARN: aws.String(ks.arn),
+			ConsumerName: aws.String(ks.consumerName),
+		})
+		if err != nil {
+			log.Panic(err)
+		}
+		ks.consumerArn = *resp.Consumer.ConsumerARN
+		// defer DeregisterStreamConsumer(ks.client, ks.arn, consumerARN)
+		log.Printf("INFO: registered consumer arn service:kinesis streamarn:%s consumername:%s consumerarn:%s\n", ks.arn, ks.consumerName, ks.consumerArn)
+	}
+
+	// wait until the stream is in ACTIVE state
+	is_active := false
+	for i := 0; i < 10; i++ {
+		resp, err := ks.client.DescribeStreamSummary(context.Background(), &kinesis.DescribeStreamSummaryInput{
+			StreamARN: aws.String(ks.arn),
+			// StreamARN: aws.String(consumerARN),
+		})
+		if err == nil && resp.StreamDescriptionSummary.StreamStatus == "ACTIVE" {
+			is_active = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !is_active {
+		log.Panic("ERROR: stream never became active; service:kinesis streamarn:", ks.arn, "consumername:", ks.consumerName)
+	}
+
+	// wait until the consumer is in ACTIVE state
+	is_active = false
+	for i := 0; i < 10; i++ {
+		resp, err := ks.client.DescribeStreamConsumer(context.Background(), &kinesis.DescribeStreamConsumerInput{
+			ConsumerARN: aws.String(ks.consumerArn),
+		})
+		if err == nil && resp.ConsumerDescription.ConsumerStatus == "ACTIVE" {
+			is_active = true
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if !is_active {
+		log.Panic("ERROR: consumer never became active; service:kinesis streamarn:", ks.arn, "consumername:", ks.consumerName)
+	}
+	
+
+	// NB: per https://pkg.go.dev/github.com/aws/aws-sdk-go-v2/service/kinesis#Client.SubscribeToShard
+	//     subscriptions last 5 minutes
+	start_pos := &types.StartingPosition{}
+	if ks.cursorRestart {
+		start_pos.Type = types.ShardIteratorTypeTrimHorizon				// oldest untrimmed data record
+	} else {
+		start_pos.Type = types.ShardIteratorTypeAfterSequenceNumber
+		start_pos.SequenceNumber = aws.String(ks.consumerSeqNo)
+	}
+
+	response, err := ks.client.SubscribeToShard(context.Background(), &kinesis.SubscribeToShardInput{
+		ConsumerARN: aws.String(ks.consumerArn),
+		ShardId:   aws.String(ks.shardID),
+		StartingPosition: start_pos,
+	})
+	if err != nil {
+		log.Panic(err)
+	}
 
 
+	// per docs, runs 5 minutes then returns
+	for event := range response.GetStream().Events() {
+		event2 := *event.(*types.SubscribeToShardEventStreamMemberSubscribeToShardEvent)
+		for _, rec := range event2.Value.Records {
+			out := Record{
+				payload: string(rec.Data),
+			}
+			sink.Write(out)
+		}
+
+		ks.consumerSeqNo = *event2.Value.ContinuationSequenceNumber
+	}
 }
 
 
 // reads a stream then terminates when out of data
 func (ks *KinesisService) ReadStream(sink StreamSink) {
 	if (!ks.doneInitialization) {
-		log.Fatal("ERROR: ReadStream called before Authorize")
+		log.Panic("ERROR: ReadStream called before Authorize")
 	}
 	
 	if !ks.kinesisDoListen {
-		ks.ReadStreamPoll(sink)
+		ks.readStreamPoll(sink)
 	} else {
-		ks.ReadStreamListen(sink)
+		ks.readStreamListen(sink)
 	}
 }
 
 
 // reads a stream via polling
-func (ks *KinesisService) ReadStreamPoll(sink StreamSink) {
+func (ks *KinesisService) readStreamPoll(sink StreamSink) {
 	iterator := kinesis.GetShardIteratorInput{
 		StreamARN: aws.String(ks.arn),
 	}
@@ -254,8 +350,6 @@ func (ks *KinesisService) ReadStreamPoll(sink StreamSink) {
 	ks.cursorRestart = true
 
 	for shardidx, shardInfo := range ks.shardList {
-		// fmt.Println("INFO: shard", i, shardInfo.ShardID)
-
 		iterator.ShardId = aws.String(shardInfo.ShardID)
 		iterator.StartingSequenceNumber = aws.String(shardInfo.StartingSequenceNumber)
 
@@ -273,7 +367,7 @@ func (ks *KinesisService) ReadStreamPoll(sink StreamSink) {
 		var itr *string = shardItr.ShardIterator
 
 		// GetRecords, by design, may return [] even when there are unprocessed records
-		// the right solution is to use a listener, not a poller; as a workaround, heuristic 10 calls in a row
+		// the right solution is to use a listener, not a poller; as a workaround, heuristic 100 calls in a row
 		// with no data means we pause processing
 		nullcount := 0
 		nullcount_heuristic := 100
@@ -306,13 +400,19 @@ func (ks *KinesisService) ReadStreamPoll(sink StreamSink) {
 				}
 				sink.Write(out)
 			}
+
+			// recommended per docs
+			// https://docs.aws.amazon.com/kinesis/latest/APIReference/API_GetRecords.html
+			time.Sleep(1 * time.Second)
 		
 			// Get the next shard iterator.
 			itr = data.NextShardIterator
 		
 		
 			if itr == nil || nullcount >= nullcount_heuristic {
-				ks.shardList[shardidx].StartingSequenceNumber = max_seq
+				if max_seq != "" {
+					ks.shardList[shardidx].StartingSequenceNumber = max_seq
+				}
 				break
 			}
 		}
